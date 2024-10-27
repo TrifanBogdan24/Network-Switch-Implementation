@@ -1,0 +1,59 @@
+name: CI Testing Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check out the repository
+      uses: actions/checkout@v2
+
+    - name: Set up Python 3
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+
+    - name: Install system dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y mininet openvswitch-testcontroller tshark python3-click python3-scapy xterm python3-pip
+
+    - name: Install Python packages
+      run: |
+        sudo pip3 install mininet
+        sudo pip3 install scapy
+        sudo pip3 install pathlib
+        sudo pip3 install git+https://github.com/mininet/mininet.git
+
+    - name: Run checker script and save output
+      run: |
+        # Run the checker script and save output
+        ./checker/checker.sh > output.log 2>&1
+        # Display the output for visibility
+        cat output.log
+        # Check the last line of the output log
+        LAST_LINE=$(tail -n 1 output.log)
+        echo "Last line of output: $LAST_LINE"
+        # Check if the last line indicates success
+        if [[ "$LAST_LINE" == *"TOTAL: 100/100"* ]]; then
+          echo "Success: TOTAL score is 100/100"
+          exit 0
+        else
+          echo "Failure: TOTAL score is not 100/100"
+          exit 1
+        fi
+
+    - name: Upload log file as artifact
+      if: failure()
+      uses: actions/upload-artifact@v3
+      with:
+        name: checker-log
+        path: output.log
