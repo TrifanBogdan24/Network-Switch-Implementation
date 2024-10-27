@@ -45,6 +45,119 @@ def send_bdpu_every_sec():
 
 
 
+# MyTODO
+def send_to_link_with_VLAN_tag(src_interface, dst_interface, length, data):
+    """
+    Function 'wrapped' on send_to_link
+    Additional logic for VLAN tag   -> Implements VLAN support
+    
+    
+    Interfaces rr-0-[0-1]
+    """
+    switch_id = sys.argv[1]
+    
+
+
+
+    if switch_id == 14:
+        # switch 0
+        # Please see: configs/switch0.cfg
+        if get_interface_name(src_interface) == "r-0" and get_interface_name(dst_interface) in ["rr-0-1", "rr-0-2"]:
+            tagged_frame = data[0:12] + create_vlan_tag(1) + data[12:]
+            send_to_link(dst_interface, length + 4, tagged_frame)  # The size of VLAN TAG is 4 bits
+            return
+        
+        if get_interface_name(src_interface) == "r-1" and get_interface_name(dst_interface) in ["rr-0-1", "rr-0-2"]:
+            tagged_frame = data[0:12] + create_vlan_tag(2) + data[12:]
+            send_to_link(dst_interface, length + 4, tagged_frame)  # The size of VLAN TAG is 4 bits
+            return
+        
+        if get_interface_name(src_interface) in ["rr-0-1", "rr-0-2"] and get_interface_name(src_interface) in ["rr-0-1", "rr-0-2"]:
+            # Comunicatie intre doua linii trunk: se trimite pachetul asa cum se primeste
+            send_to_link(dst_interface, length, data)
+            return
+
+        if get_interface_name(src_interface) in ["rr-0-1", "rr-0-2"] and get_interface_name(dst_interface) in ["r-0", "r-1"]:
+            # The packet was received from a TRUNK line
+            # Therefore, it was TAGGED
+
+            vlan_tci = int.from_bytes(data[14:16], byteorder='big')
+            vlan_id = vlan_tci & 0x0FFF  # extract the 12-bit VLAN ID
+
+            untagged_frame = data[0:12] + data[16:]
+
+            if get_interface_name(src_interface) == "r-0":# Removing 4 bits (size of VLAN)
+                if vlan_id == 1:
+                    send_to_link(dst_interface, length - 4, untagged_frame)  # Removing 4 bits (size of VLAN)
+                    return
+                else:
+                    # Cannot transmit a pachtet in different VLANs
+                    return
+            
+            if get_interface_name(src_interface) == "r-1":
+                if vlan_id == 2:
+                    send_to_link(dst_interface, length - 4, untagged_frame)  # Removing 4 bits (size of VLAN)
+                    return
+                else:
+                    # Cannot transmit a pachtet in different VLANs
+                    return
+                
+
+
+    elif switch_id == 10:
+        # switch 1
+        # Please see: configs/switch1.cfg
+        if get_interface_name(src_interface) == "r-0" and get_interface_name(dst_interface) in ["rr-0-1", "rr-0-2"]:
+            tagged_frame = data[0:12] + create_vlan_tag(1) + data[12:]
+            send_to_link(dst_interface, length + 4, tagged_frame)  # The size of VLAN TAG is 4 bits
+            return
+        
+        if get_interface_name(src_interface) == "r-1" and get_interface_name(dst_interface) in ["rr-0-1", "rr-0-2"]:
+            tagged_frame = data[0:12] + create_vlan_tag(1) + data[12:]
+            send_to_link(dst_interface, length + 4, tagged_frame)  # The size of VLAN TAG is 4 bits
+            return
+        
+        if get_interface_name(src_interface) == "r-0" and get_interface_name(dst_interface) == "r-1":
+            # Comunicatie intre cei doi hosti din acelasi VLAN
+            send_to_link(dst_interface, length, data)
+            return
+
+        if get_interface_name(src_interface) in ["rr-0-1", "rr-0-2"] and get_interface_name(src_interface) in ["rr-0-1", "rr-0-2"]:
+            # Comunicatie intre doua linii trunk: se trimite pachetul asa cum se primeste
+            send_to_link(dst_interface, length, data)
+            return
+        
+        if get_interface_name(src_interface) in ["rr-0-1", "rr-0-2"] and get_interface_name(dst_interface) in ["r-0", "r-1"]:
+            # The packet was received from a TRUNK line and moves in an ACCESS LINE
+            # Therefore, it was TAGGED
+
+            vlan_tci = int.from_bytes(data[14:16], byteorder='big')
+            vlan_id = vlan_tci & 0x0FFF  # extract the 12-bit VLAN ID
+
+            untagged_frame = data[0:12] + data[16:]
+
+            if get_interface_name(src_interface) == "r-0":
+                if vlan_id == 1:
+                    send_to_link(dst_interface, length - 4, untagged_frame)  # Removing 4 bits (size of VLAN)
+                    return
+                else:
+                    # Cannot transmit a pachtet in different VLANs
+                    return
+            
+            if get_interface_name(src_interface) == "r-1":
+                if vlan_id == 1:
+                    send_to_link(dst_interface, length - 4, untagged_frame)  # Removing 4 bits (size of VLAN)
+                    return
+                else:
+                    # Cannot transmit a pachtet in different VLANs
+                    return
+            
+    else:
+        # Other switch, different from 0 and 1
+        send_to_link(dst_interface, length, data)
+
+
+
 
 def main():
     # init returns the max interface number. Our interfaces
@@ -94,27 +207,33 @@ def main():
 
         # myTODO: updatez interfata pe care a venit pachetul cu adresa MAC sursa a pachetului
         CAM_table[interface] = src_mac
-
+        
+        src_interface = interface
             
-        is_dst_interface: bool = False
+        found_dst_interface: bool = False
 
 
         # MyTODO: cuatam interfata care are mapata adresa MAC destinatie
-        for port in interfaces:
-            if port == interface:
+        for dst_interface in interfaces:
+            if dst_interface == interface:
                 continue
-            if CAM_table[port] == dest_mac:
-                send_to_link(port, length, data)
-                is_dst_interface = True
+            if CAM_table[dst_interface] == dest_mac:
+                # myTODO: Implement VLAN support
+                send_to_link_with_VLAN_tag(src_interface, dst_interface, length, data)
+                found_dst_interface = True
                 break
 
-        if is_dst_interface == False:
+        if found_dst_interface == False:
             # MyTODO: facem broadcast: trimitem packetul pe toate interfetele, mai putin pe cea pe care a venit
-            # port = interfata
-            for port in interfaces:
-                if port == interface:
+            # dst_interface = interfata
+            for dst_interface in interfaces:
+                if dst_interface == interface:
                     continue
-                send_to_link(port, length, data)
+                # myTODO: Implement VLAN support
+                send_to_link_with_VLAN_tag(src_interface, dst_interface, length, data)
+
+
+
 
 
 

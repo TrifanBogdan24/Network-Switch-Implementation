@@ -92,19 +92,19 @@ si ii dam `send` (de fapt `send_to_link`) pe interfata respectiva.
 
 
 ```python 3
-for port in interfaces:
-    if port == interface:
+for dst_interface in interfaces:
+    if dst_interface == interface:
         continue
-    if CAM_table[port] == dest_mac:
-        send_to_link(port, length, data)
-        is_dst_interface = True
+    if CAM_table[dst_interface] == dest_mac:
+        send_to_link(dst_interface, length, data)
+        found_dst_interface = True
         break
 ```
 
 
 Daca in schimb, nu am gasit nicio `interfata` care sa asocieze `adresa MAC destinate`,
 ```python 3
-if is_dst_interface == False
+if found_dst_interface == False
 ```
 atunci inseamna ca nu stim pe unde sa trimitem pachetul,
 si deci il trimitem pe toate interfetele, mai putin cea pe care a venit (logic).
@@ -112,11 +112,11 @@ si deci il trimitem pe toate interfetele, mai putin cea pe care a venit (logic).
 
 ```python 3
 # Broadcast
-if is_dst_interface == False:
-    for port in interfaces:
-        if port == interface:
+if found_dst_interface == False:
+    for dst_interface in interfaces:
+        if dst_interface == interface:
             continue
-        send_to_link(port, length, data)
+        send_to_link(dst_interface, length, data)
 ```
 
 
