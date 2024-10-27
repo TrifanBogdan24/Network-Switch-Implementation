@@ -39,19 +39,39 @@ class SwitchConfig:
         self.switch_id = switch_id
         self.interfaces = interfaces
 
-    # TODO: beatify the output string
     def __str__(self):
-        interfaces_str = ",\n".join(
-            f"\t{{\n\t\t\"Interface name\": \"{interface.name}\",\n\t\t\"{interface.port_type}\"\n\t}}"
-            for interface in self.interfaces
-        )
-        return f"""\
-{{
-    "SwitchID": {self.switch_id},
-    "Interfaces": [
-        {interfaces_str}
-    ]
-}}"""
+        string = ""
+        string += "{\n"
+        string += f"\t\"SwitchID\": {self.switch_id},\n"
+
+        if len(self.interfaces) == 0:
+            string += "\t\"Switch Interfaces\": []\n"
+            return string
+
+        string += "\t\"Switch Interfaces\":\n"
+        string += "\t[\n"
+
+        iter = 0
+        for interface in self.interfaces:
+            string += "\t\t{\n"
+            string += f"\t\t\t\"Interface name\": {interface.name},\n"
+
+            # Kind a pattern matching
+            if isinstance(interface.port_type, Trunk):
+                string += f"\t\t\t\"Interface type\": TRUNK\n"
+            elif isinstance(interface.port_type, Access):
+                string += f"\t\t\t\"Interface type\": ACCESS (vlan_id={interface.port_type.vlan_id})\n"
+
+
+            
+            iter = iter + 1
+            if iter == len(self.interfaces):
+                string += "\t\t}\n"
+            else:
+                string += "\t\t},\n"
+        string += "\t]\n"
+        string += "}"
+        return string
 
 # MyTODO
 def read_config_file(filepath: str) -> SwitchConfig:
