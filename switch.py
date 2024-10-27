@@ -6,6 +6,11 @@ import threading
 import time
 from wrapper import recv_from_any_link, send_to_link, get_switch_mac, get_interface_name
 
+
+
+
+
+
 def parse_ethernet_header(data):
     # Unpack the header fields from the byte array
     #dest_mac, src_mac, ethertype = struct.unpack('!6s6sH', data[:14])
@@ -34,6 +39,13 @@ def send_bdpu_every_sec():
         # TODO Send BDPU every second if necessary
         time.sleep(1)
 
+
+
+
+
+
+
+
 def main():
     # init returns the max interface number. Our interfaces
     # are 0, 1, 2, ..., init_ret value + 1
@@ -41,6 +53,9 @@ def main():
 
     num_interfaces = wrapper.init(sys.argv[2:])
     interfaces = range(0, num_interfaces)
+
+    # myTODO: init the CAM table
+    CAM_table = {port: None for port in range(num_interfaces)}
 
     print("# Starting switch with id {}".format(switch_id), flush=True)
     print("[INFO] Switch MAC", ':'.join(f'{b:02x}' for b in get_switch_mac()))
@@ -76,6 +91,33 @@ def main():
         print("Received frame of size {} on interface {}".format(length, interface), flush=True)
 
         # TODO: Implement forwarding with learning
+
+        # myTODO: updatez interfata pe care a venit pachetul cu adresa MAC sursa a pachetului
+        CAM_table[interface] = src_mac
+
+            
+        is_dst_interface: bool = False
+
+
+        # MyTODO: cuatam interfata care are mapata adresa MAC destinatie
+        for port in interfaces:
+            if port == interface:
+                continue
+            if CAM_table[port] == dest_mac:
+                send_to_link(port, length, data)
+                is_dst_interface = True
+                break
+
+        if is_dst_interface == False:
+            # MyTODO: facem broadcast: trimitem packetul pe toate interfetele, mai putin pe cea pe care a venit
+            # port = interfata
+            for port in interfaces:
+                if port == interface:
+                    continue
+                send_to_link(port, length, data)
+
+
+
         # TODO: Implement VLAN support
         # TODO: Implement STP support
 
