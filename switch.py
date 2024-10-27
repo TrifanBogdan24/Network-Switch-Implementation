@@ -41,11 +41,6 @@ def send_bdpu_every_sec():
 
 
 
-# MyTODO
-def get_vlan_id(data):
-    vlan_tci = int.from_bytes(data[14:16], byteorder='big')
-    vlan_id = vlan_tci & 0x0FFF  # extract the 12-bit VLAN ID
-    return vlan_id
 
 # MyTODO
 def send_tagged_frame_to_link(vlan_id, dst_interface, length, data):
@@ -61,7 +56,7 @@ def send_untagged_frame_to_link(dst_interface, length, data):
 
 
 # MyTODO
-def send_to_link_with_VLAN_tag(src_interface, dst_interface, length, data):
+def enable_VLAN_sending(vlan_id, src_interface, dst_interface, length, data):
     """
     Function 'wrapped' on send_to_link
     Additional logic for VLAN tag   -> Implements VLAN support
@@ -84,13 +79,13 @@ def send_to_link_with_VLAN_tag(src_interface, dst_interface, length, data):
             send_tagged_frame_to_link(2, dst_interface, length, data)
             return
         if src_name in ["rr-0-1", "rr-0-2"] and dst_name == "r-0":
-            if get_vlan_id(data) == 1:
+            if vlan_id == 1:
                 # Sterge VLAN tag-ul si trimite pachetul
                 send_untagged_frame_to_link(dst_interface, length, data)
                 return
             return
         if src_name in ["rr-0-1", "rr-0-2"] and dst_name == "r-1":
-            if get_vlan_id(data) == 2:
+            if vlan_id == 2:
                 # Sterge VLAN tag-ul si trimite pachetul
                 send_untagged_frame_to_link(dst_interface, length, data)
                 return
@@ -107,7 +102,7 @@ def send_to_link_with_VLAN_tag(src_interface, dst_interface, length, data):
             send_tagged_frame_to_link(1, dst_interface, length, data)
             return
         if src_name in ["rr-0-1", "rr-0-2"] and dst_name in ["r-0-1", "r-0-2"]:
-            if get_vlan_id(data) == 1:
+            if vlan_id == 1:
                 # Stergem VLAN tag-ul si trimite pachetul
                 send_tagged_frame_to_link(1, dst_interface, length, data)
                 return
@@ -192,7 +187,7 @@ def main():
             if CAM_table[dst_interface] == dest_mac:
                 # MyTODO Implement VLAN support
                 found_dst_interface = True
-                send_to_link_with_VLAN_tag(src_interface, dst_interface, length, data)
+                enable_VLAN_sending(vlan_id, src_interface, dst_interface, length, data)
                 # send_to_link(dst_interface, length, data)
 
                 break
@@ -204,7 +199,7 @@ def main():
                 if dst_interface == interface:
                     continue
                 # MyTODO Implement VLAN support
-                send_to_link_with_VLAN_tag(src_interface, dst_interface, length, data)
+                enable_VLAN_sending(vlan_id, src_interface, dst_interface, length, data)
                 # send_to_link(dst_interface, length, data)
 
 
