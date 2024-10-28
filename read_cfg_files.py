@@ -47,12 +47,6 @@ class SwitchConfig:
         self.switch_id = switch_id
         self.interfaces = interfaces
 
-
-class SwitchConfig:
-    def __init__(self, switch_id: int, interfaces: List[SwitchInterface]):
-        self.switch_id = switch_id
-        self.interfaces = interfaces
-
     def __str__(self):
         """
         Returns a JSON formatted string

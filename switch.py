@@ -52,12 +52,6 @@ class SwitchConfig:
         self.switch_id = switch_id
         self.interfaces = interfaces
 
-# MyTODO
-class SwitchConfig:
-    def __init__(self, switch_id: int, interfaces: List[SwitchInterface]):
-        self.switch_id = switch_id
-        self.interfaces = interfaces
-
 
     def __str__(self):
         """
@@ -214,7 +208,7 @@ def enable_VLAN_sending(network_switches: List[SwitchConfig], vlan_id, src_inter
                 send_tagged_frame_to_link(vlan_id, dst_interface, length, data)
                 return
 
-            if isinstance(src_port_type, Access) and isinstance(dst_interface, Trunk):
+            if isinstance(src_port_type, Trunk) and isinstance(dst_interface, Trunk):
                 # Pachetul trece de pe o linie ACCESS pe o linie ACCESS
                 
                 src_vlan_id = src_port_type.vlan_id
