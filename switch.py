@@ -173,72 +173,68 @@ def send_untagged_frame_to_link(dst_interface, length, data):
 
 
 # MyTODO
-def enable_VLAN_sending(vlan_id, src_interface, dst_interface, length, data):
+def enable_VLAN_sending(network_switches: List[SwitchConfig], vlan_id, src_interface, dst_interface, length, data) -> None:
     """
     Function 'wrapped' on send_to_link
-    Additional logic for VLAN tag   -> Implements VLAN support
-    
-    
-    Interfaces rr-0-[0-1]
+    Additional logic for VLAN tag   -> Implements VLAN support    
     """
     switch_id = sys.argv[1]
     
-    src_name: str = get_interface_name(src_interface)
-    dst_name: str = get_interface_name(dst_interface)
 
-    if switch_id == 14:
-        if src_name == "r-0" and dst_name in ["rr-0-1", "rr-0-2"]:
-            # Adauga VLAN tag = 1 si trimite pachetul
-            send_tagged_frame_to_link(1, dst_interface, length, data)
-            return
-        if src_name == "r-1" and dst_name in ["rr-0-1", "rr-0-2"]:
-            # Adauga VLAN tag = 2 si trimite pachetul
-            send_tagged_frame_to_link(2, dst_interface, length, data)
-            return
-        if src_name in ["rr-0-1", "rr-0-2"] and dst_name == "r-0":
-            if vlan_id == 1:
-                # Sterge VLAN tag-ul si trimite pachetul
+    for switch in network_switches:
+        if switch_id == switch.switch_id:
+            src_name: str = get_interface_name(src_interface)
+            dst_name: str = get_interface_name(dst_interface)
+
+            src_port_type: SwitchInterface = switch.getInterfaceByName(src_name)
+            dst_port_type: SwitchInterface = switch.getInterfaceByName(dst_name)
+
+            # Kind a pattern matching
+            if isinstance(src_port_type, Trunk) and isinstance(dst_port_type, Trunk):
+                # Pachetul trece de pe o linie TRUNK pe o alta linie TRUNK
+                # Trimitem datele asa cum le-am primit
+                send_to_link(dst_interface, length, data)
+                return
+            if isinstance(src_port_type, Trunk) and isinstance(dst_port_type, Access):
+                # Pachetul trece de poe linie TRUNK pe o linie ACCESS
+                # Inseamna ca pachatul are VALN TAG
+                dst_vlan = dst_port_type.vlan_id
+                
+                if dst_vlan != vlan_id:
+                    # NU TRIMITEM pachetul se face transmisia in alt VLAN
+                    return
+                
+                # Eliminam TAG-ul si trimitem pachetul
                 send_untagged_frame_to_link(dst_interface, length, data)
                 return
-            return
-        if src_name in ["rr-0-1", "rr-0-2"] and dst_name == "r-1":
-            if vlan_id == 2:
-                # Sterge VLAN tag-ul si trimite pachetul
-                send_untagged_frame_to_link(dst_interface, length, data)
-                return
-            return
-        if src_name in ["rr-0-1", "rr-0-2"] and dst_name in ["rr-0-1", "rr-0-2"]:
-            # Trimite pachetul asa cum l-ai primit
-            send_to_link(dst_interface, length, data)
-            return
-        return
 
-    elif switch_id == 10:
-        if src_name in ["r-0", "r-1"] and dst_name in ["rr-0-1", "rr-0-2"]:
-            # Adaugam VLAN tag = 1 si trimite pachetul
-            send_tagged_frame_to_link(1, dst_interface, length, data)
-            return
-        if src_name in ["rr-0-1", "rr-0-2"] and dst_name in ["r-0-1", "r-0-2"]:
-            if vlan_id == 1:
-                # Stergem VLAN tag-ul si trimite pachetul
-                send_tagged_frame_to_link(1, dst_interface, length, data)
+            if isinstance(src_port_type, Access) and isinstance(dst_port_type, Trunk):
+                # Pachetul trece de pe o linie ACCESS pe o linie TRUNK
+                # Trimitem pachetul cu TAG-ul VLAN-ului de ACCESS
+                send_tagged_frame_to_link(vlan_id, dst_interface, length, data)
                 return
+
+            if isinstance(src_port_type, Access) and isinstance(dst_interface, Trunk):
+                # Pachetul trece de pe o linie ACCESS pe o linie ACCESS
+                
+                src_vlan_id = src_port_type.vlan_id
+                dst_vlan_id = dst_port_type.vlan_id
+
+                if src_vlan_id != dst_vlan_id:
+                    # Nu facem transmisia daca punctele de ACCESS nu sunt in acelasi VLAN
+                    return
+                
+                # Trimitem pachetul asa cum l-am primit
+                send_to_link(dst_interface, length, data)
+                return
+
             return
-        if src_name == ["r-0", "r-1"] and dst_name == ["r-0", "r-1"]:
-            # Interfetele sursa si destinatie vor fi diferite
-            # Trimitem pachetul asa cum l-am primit (suntem in VLAN 1)
-            send_to_link(dst_interface, length, data)
-            return
-        if src_name == ["rr-0-1", "rr-0-2"] and dst_name == ["rr-0-1", "rr-0-2"]:
-            # Interfetele sursa si destinatie vor fi diferite
-            # Trimitem pachetul asa cum l-am primit
-            send_to_link(dst_interface, length, data)
-            return
-        return
-    else:
-        # Other switch, different from 0 and 1
-        send_to_link(dst_interface, length, data)
-        return
+    
+    # Switch is not in the list of switches
+    send_to_link(dst_interface, length, data)
+
+    
+
 
 
 
@@ -255,8 +251,9 @@ def main():
     CAM_table = {port: None for port in range(num_interfaces)}
 
     # MyTODO
-    switch_0 = read_config_file("configs/switch0.cfg")
-    switch_1 = read_config_file("configs/switch1.cfg")
+    switch_0: SwitchConfig = read_config_file("configs/switch0.cfg")
+    switch_1: SwitchConfig = read_config_file("configs/switch1.cfg")
+    network_switches: List[SwitchConfig] = [switch_0, switch_1]
 
 
 
@@ -310,7 +307,7 @@ def main():
             if CAM_table[dst_interface] == dest_mac:
                 # MyTODO Implement VLAN support
                 found_dst_interface = True
-                enable_VLAN_sending(vlan_id, src_interface, dst_interface, length, data)
+                enable_VLAN_sending(network_switches, vlan_id, src_interface, dst_interface, length, data)
                 # send_to_link(dst_interface, length, data)
 
                 break
@@ -322,7 +319,7 @@ def main():
                 if dst_interface == interface:
                     continue
                 # MyTODO Implement VLAN support
-                enable_VLAN_sending(vlan_id, src_interface, dst_interface, length, data)
+                enable_VLAN_sending(network_switches, vlan_id, src_interface, dst_interface, length, data)
                 # send_to_link(dst_interface, length, data)
 
 
