@@ -30,7 +30,21 @@ class SwitchInterface:
         self.port_type = port_type
 
     def __str__(self):
-        return f"Interface name: {self.name}\n{self.port_type}"
+        """
+        Returns a JSON formatted string
+        """
+        string = ""
+        string += "{\n"
+        string += f"\t\"Interface name\": {self.name},\n"
+
+        # Kind a pattern matching
+        if isinstance(self.port_type, Trunk):
+            string += f"\t\"Interface type\": TRUNK\n"
+        elif isinstance(self.port_type, Access):
+            string += f"\t\"Interface type\": ACCESS (vlan_id={self.port_type.vlan_id})\n"
+
+        string += "}"
+        return string
 
 # MyTODO
 class SwitchConfig:
@@ -46,6 +60,9 @@ class SwitchConfig:
 
 
     def __str__(self):
+        """
+        Returns a JSON formatted string
+        """
         string = ""
         string += "{\n"
         string += f"\t\"SwitchID\": {self.switch_id},\n"
@@ -78,6 +95,12 @@ class SwitchConfig:
         string += "\t]\n"
         string += "}"
         return string
+
+    def getInterfaceByName(self, name: str) -> Union[Trunk, Access]:
+        for interface in self.interfaces:
+            if interface.name == name:
+                return interface
+        return None
 
 
 # MyTODO

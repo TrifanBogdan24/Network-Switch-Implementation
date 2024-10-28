@@ -25,7 +25,21 @@ class SwitchInterface:
         self.port_type = port_type
 
     def __str__(self):
-        return f"Interface name: {self.name}\n{self.port_type}"
+        """
+        Returns a JSON formatted string
+        """
+        string = ""
+        string += "{\n"
+        string += f"\t\"Interface name\": {self.name},\n"
+
+        # Kind a pattern matching
+        if isinstance(self.port_type, Trunk):
+            string += f"\t\"Interface type\": TRUNK\n"
+        elif isinstance(self.port_type, Access):
+            string += f"\t\"Interface type\": ACCESS (vlan_id={self.port_type.vlan_id})\n"
+
+        string += "}"
+        return string
 
 # MyTODO
 class SwitchConfig:
@@ -40,6 +54,9 @@ class SwitchConfig:
         self.interfaces = interfaces
 
     def __str__(self):
+        """
+        Returns a JSON formatted string
+        """
         string = ""
         string += "{\n"
         string += f"\t\"SwitchID\": {self.switch_id},\n"
@@ -72,6 +89,12 @@ class SwitchConfig:
         string += "\t]\n"
         string += "}"
         return string
+    
+    def getInterfaceByName(self, name: str) -> Union[Trunk, Access]:
+        for interface in self.interfaces:
+            if interface.name == name:
+                return interface
+        return None
 
 # MyTODO
 def read_config_file(filepath: str) -> SwitchConfig:
@@ -108,7 +131,42 @@ def main():
 
     print(switch_0)
     print(switch_1)
+    print()
+    
+    print(f"switch 0 r-0:")
+    print(f"{switch_0.getInterfaceByName('r-0')}")  # ACCESS vlan_id=1
+    print()
+    
 
+    print(f"switch 0 r-1:")
+    print(f"{switch_0.getInterfaceByName('r-1')}")  # ACCESS vlan_id=2
+    print()
+
+    print(f"switch 0 rr-0-1:")
+    print(f"{switch_0.getInterfaceByName('rr-0-1')}")  # TRUNK
+    print()
+
+    print(f"switch 0 rr-0-2:")
+    print(f"{switch_0.getInterfaceByName('rr-0-2')}")  # TRUNK
+    print()
+
+
+    print(f"switch 1 r-0:")
+    print(f"{switch_1.getInterfaceByName('r-0')}") # ACCESS vlan_id=1
+    print()
+    
+
+    print(f"switch 1 r-1:")
+    print(f"{switch_1.getInterfaceByName('r-1')}")  # ACCESS vlan_id=1
+    print()
+
+    print(f"switch 1 rr-0-1:")
+    print(f"{switch_1.getInterfaceByName('rr-0-1')}")  # TRUNK
+    print()
+
+    print(f"switch 1 rr-1-2:")
+    print(f"{switch_1.getInterfaceByName('rr-1-2')}")  # TRUNK
+    print()
 
 if __name__ == '__main__':
     main()
