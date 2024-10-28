@@ -43,8 +43,9 @@ class SwitchInterface:
 
 # MyTODO
 class SwitchConfig:
-    def __init__(self, switch_id: int, interfaces: List[SwitchInterface]):
+    def __init__(self, switch_id: int, switch_priority: int, interfaces: List[SwitchInterface]):
         self.switch_id = switch_id
+        self.switch_priority = switch_priority
         self.interfaces = interfaces
 
     def __str__(self):
@@ -54,6 +55,7 @@ class SwitchConfig:
         string = ""
         string += "{\n"
         string += f"\t\"SwitchID\": {self.switch_id},\n"
+        string += f"\t\"Switch Priority\": {self.switch_priority},\n"
 
         if len(self.interfaces) == 0:
             string += "\t\"Switch Interfaces\": []\n"
@@ -91,10 +93,10 @@ class SwitchConfig:
         return None
 
 # MyTODO
-def read_config_file(filepath: str) -> SwitchConfig:
+def read_config_file(switch_id: int, filepath: str) -> SwitchConfig:
     try:
         with open(filepath, 'r') as file:
-            switch_id = int(file.readline().strip())
+            switch_priority = int(file.readline().strip())
             interfaces = []
 
             for line in file:
@@ -109,17 +111,17 @@ def read_config_file(filepath: str) -> SwitchConfig:
 
                 interfaces.append(SwitchInterface(name, port))
 
-            return SwitchConfig(switch_id, interfaces)
+            return SwitchConfig(switch_id, switch_priority, interfaces)
     except Exception as err:
         print(f"[ERROR] Eroare la citirea fișierului {filepath}: {err}")
-        return None  # Asigură-te că returnezi None în caz de eroare
+        return None
 
 
 
 
 def main():
-    switch_0 = read_config_file("configs/switch0.cfg")
-    switch_1 = read_config_file("configs/switch1.cfg")
+    switch_0 = read_config_file(0, "configs/switch0.cfg")
+    switch_1 = read_config_file(1, "configs/switch1.cfg")
 
 
 

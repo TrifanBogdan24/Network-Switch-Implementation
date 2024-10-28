@@ -1,0 +1,21 @@
+❯ ./test.sh 
+\gcc -L. -shared lib/queue.o lib/list.o lib/lib.o  -o dlink.so
+\=================================== Running tests ===================================
+
+>> Running tests for 1. learning
+
+[INFO] Starting switch0
+[INFO] Starting switch1
+  ICMP_0_2_ARRIVES_2 ..................................................   PASSED
+  ICMP_0_3_ARRIVES_3 ..................................................   PASSED
+ICMP_0_2_NOT_ARRIVES_3 ..................................................   PASSED
+ICMP_0_3_NOT_ARRIVES_2 ..................................................   PASSED
+>> Running tests for 2. VLAN
+
+ICMP_0_1_NOT_ARRIVES_1_VLAN ..................................................   FAILED
+ICMP_3_1_NOT_ARRIVES_1_VLAN ..................................................   FAILED
+ICMP_3_2_ARRIVES_2_VLAN ..................................................   PASSED
+ICMP_0_3_ARRIVES_3_VLAN ..................................................   PASSED
+>> Running tests for 3. STP
+
+[INFO] Starting switch2

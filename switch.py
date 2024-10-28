@@ -10,6 +10,7 @@ from typing import List, Union
 
 
 
+
 # MyTODO
 class Trunk:
     def __init__(self):
@@ -51,10 +52,10 @@ class SwitchInterface:
 
 # MyTODO
 class SwitchConfig:
-    def __init__(self, switch_id: int, interfaces: List[SwitchInterface]):
+    def __init__(self, switch_id: int, switch_priority: int, interfaces: List[SwitchInterface]):
         self.switch_id = switch_id
+        self.switch_priority = switch_priority
         self.interfaces = interfaces
-
 
     def __str__(self):
         """
@@ -63,6 +64,7 @@ class SwitchConfig:
         string = ""
         string += "{\n"
         string += f"\t\"SwitchID\": {self.switch_id},\n"
+        string += f"\t\"Switch Priority\": {self.switch_priority},\n"
 
         if len(self.interfaces) == 0:
             string += "\t\"Switch Interfaces\": []\n"
@@ -92,19 +94,18 @@ class SwitchConfig:
         string += "\t]\n"
         string += "}"
         return string
-
+    
     def getInterfaceByName(self, name: str) -> Union[Trunk, Access]:
         for interface in self.interfaces:
             if interface.name == name:
                 return interface
         return None
 
-
 # MyTODO
-def read_config_file(filepath: str) -> SwitchConfig:
+def read_config_file(switch_id: int, filepath: str) -> SwitchConfig:
     try:
         with open(filepath, 'r') as file:
-            switch_id = int(file.readline().strip())
+            switch_priority = int(file.readline().strip())
             interfaces = []
 
             for line in file:
@@ -118,10 +119,13 @@ def read_config_file(filepath: str) -> SwitchConfig:
                     port = Access(vlan_id)
 
                 interfaces.append(SwitchInterface(name, port))
-        
-        return SwitchConfig(switch_id, interfaces)
+
+            return SwitchConfig(switch_id, switch_priority, interfaces)
     except Exception as err:
-        print(f"[ERROR] Eroare la citirea fisierului {filepath}: {err}")
+        print(f"[ERROR] Eroare la citirea fișierului {filepath}: {err}")
+        return None  
+
+
 
 
 
@@ -248,8 +252,8 @@ def main():
     CAM_table = {port: None for port in range(num_interfaces)}
 
     # MyTODO
-    switch_0: SwitchConfig = read_config_file("configs/switch0.cfg")
-    switch_1: SwitchConfig = read_config_file("configs/switch1.cfg")
+    switch_0: SwitchConfig = read_config_file(0, "configs/switch0.cfg")
+    switch_1: SwitchConfig = read_config_file(1, "configs/switch1.cfg")
     network_switches: List[SwitchConfig] = [switch_0, switch_1]
 
 
