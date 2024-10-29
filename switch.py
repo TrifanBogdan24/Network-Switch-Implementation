@@ -98,7 +98,7 @@ class SwitchConfig:
     def getInterfaceByName(self, name: str) -> Union[Trunk, Access]:
         for interface in self.interfaces:
             if interface.name == name:
-                return interface
+                return interface.port_type
         return None
 
 # MyTODO
@@ -176,64 +176,72 @@ def send_untagged_frame_to_link(dst_interface, length, data):
 
 
 # MyTODO
-def enable_VLAN_sending(network_switch: SwitchConfig, vlan_id, src_interface, dst_interface, length, data) -> None:
+def enable_VLAN_sending(network_switch: SwitchConfig, vlan_id_packet, src_interface, dst_interface, length, data) -> None:
     """
     Function 'wrapped' on send_to_link
     Additional logic for VLAN tag   -> Implements VLAN support
     """
-    switch_id = sys.argv[1]
 
 
     if network_switch is None:
         # Switch is not in the list of switches
         send_to_link(dst_interface, length, data)
+        print("Switch is None")
         return
+    
+    print(src_interface)
+    print(dst_interface)
+
 
     src_name: str = get_interface_name(src_interface)
     dst_name: str = get_interface_name(dst_interface)
 
-    src_port_type: SwitchInterface = network_switch.getInterfaceByName(src_name)
-    dst_port_type: SwitchInterface = network_switch.getInterfaceByName(dst_name)
+    src_port_type: Union[Trunk, Access] = network_switch.getInterfaceByName(src_name)
+    dst_port_type: Union[Trunk, Access] = network_switch.getInterfaceByName(dst_name)
 
-    # Kind a pattern matching
-    if isinstance(src_port_type, Trunk) and isinstance(dst_port_type, Trunk):
-        # Pachetul trece de pe o linie TRUNK pe o alta linie TRUNK
-        # Trimitem datele asa cum le-am primit
-        send_to_link(dst_interface, length, data)
-        return
-    if isinstance(src_port_type, Trunk) and isinstance(dst_port_type, Access):
-        # Pachetul trece de poe linie TRUNK pe o linie ACCESS
-        # Inseamna ca pachatul are VALN TAG
-        dst_vlan = dst_port_type.vlan_id
-        
-        if dst_vlan != vlan_id:
-            # NU TRIMITEM pachetul se face transmisia in alt VLAN
-            return
-        
-        # Eliminam TAG-ul si trimitem pachetul
-        send_untagged_frame_to_link(dst_interface, length, data)
-        return
 
-    if isinstance(src_port_type, Access) and isinstance(dst_port_type, Trunk):
-        # Pachetul trece de pe o linie ACCESS pe o linie TRUNK
-        # Trimitem pachetul cu TAG-ul VLAN-ului de ACCESS
-        send_tagged_frame_to_link(vlan_id, dst_interface, length, data)
-        return
 
     if isinstance(src_port_type, Access) and isinstance(dst_port_type, Access):
-        # Pachetul trece de pe o linie ACCESS pe o linie ACCESS
-        
-        src_vlan_id = src_port_type.vlan_id
-        dst_vlan_id = dst_port_type.vlan_id
-
-        if src_vlan_id != dst_vlan_id:
-            # Nu facem transmisia daca punctele de ACCESS nu sunt in acelasi VLAN
-            return
-        
-        # Trimitem pachetul asa cum l-am primit
         send_to_link(dst_interface, length, data)
         return
+    if isinstance(src_port_type, Trunk) and isinstance(dst_port_type, Trunk):
+        send_to_link(dst_interface, length, data)
+        return
+    if isinstance(src_port_type, Access) and isinstance(dst_port_type, Trunk):
+        # TODO: aici nu e bine
+        print(f"Access -> Trunk")
+        # print(f"Coming from: {src_port_type.vlan_id}")
+        # print(f"The other: {vlan_id_packet}")
+        print(f"A venit de la VLAN-ul: {src_port_type.vlan_id}")
+        # send_to_link(dst_interface, length, data)
+        (new_data, new_length) = (data[0:12] + create_vlan_tag(int(src_port_type.vlan_id)) + data[12:], length + 4)
+        send_to_link(dst_interface, new_length, new_data)
+        return
+    if isinstance(src_port_type, Trunk) and isinstance(dst_port_type, Access):
+        # TODO: aici nu e bine
+        print(f"Trunk -> Access")
+        print(f"Coming from: {src_port_type.vlan_id}")
+        print(f"The other: {vlan_id_packet}")
+        print()
+        # send_to_link(dst_interface, length, data)
+        if int(dst_port_type.vlan_id) != int(vlan_id_packet):
+            # Nu facem transmisia intre doua VLAN-uri diferite
+            return
+        (new_data, new_length) = (data[0:12] + data[16:], length - 4)
+        send_to_link(dst_interface, new_length, new_data)
+        return
+    
+    
 
+
+
+
+
+
+
+    send_to_link(dst_interface, length, data)
+  
+    print("Do nothing")
     return
     
 
@@ -249,6 +257,9 @@ def main():
     # are 0, 1, 2, ..., init_ret value + 1
     switch_id = sys.argv[1]
 
+    # MyTODO cast to int
+    switch_id: int = int(switch_id)
+
 
     num_interfaces = wrapper.init(sys.argv[2:])
     interfaces = range(0, num_interfaces)
@@ -256,12 +267,11 @@ def main():
     # MyTODO init the CAM table
     CAM_table = {port: None for port in range(num_interfaces)}
 
-    # MyTODO
-    network_switch: SwitchConfig = None
-    if switch_id == 0:
-        network_switch = read_config_file(0, "configs/switch0.cfg")
-    if switch_id == 1:
-        network_switch = read_config_file(1, "configs/switch1.cfg")
+
+    
+    network_switch: SwitchConfig = read_config_file(switch_id, f"configs/switch{switch_id}.cfg")
+
+    print(network_switch)
 
 
 
@@ -311,6 +321,7 @@ def main():
         # MyTODO cuatam interfata care are mapata adresa MAC destinatie
         for dst_interface in interfaces:
             if dst_interface == interface:
+                # Nu trimitem pe unde a venit
                 continue
             if CAM_table[dst_interface] == dest_mac:
                 # MyTODO Implement VLAN support
@@ -324,6 +335,7 @@ def main():
         if found_dst_interface == False:
             for dst_interface in interfaces:
                 if dst_interface == interface:
+                    # Nu trimitem pe unde a venit
                     continue
                 # MyTODO Implement VLAN support
                 enable_VLAN_sending(network_switch, vlan_id, src_interface, dst_interface, length, data)
