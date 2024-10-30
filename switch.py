@@ -48,20 +48,25 @@ class SwitchPort:
 
 # MyTODO
 class SwitchConfig:
-    def __init__(self, switch_id: int, switch_priority: int, interfaces: Dict[str, SwitchPort]):
-        """
-        interfaces = { interface_name -> interface_type }
-        e.g. interfaces = { "r-1" -> "1", "rr-0-1" -> "T" }
-        """
-        self.switch_id = switch_id
-        self.switch_priority = switch_priority
-        self.interfaces = interfaces
+    _instance = None
 
-        # Variabile pentru STP (setate default la crearea switch-ului)
-        self.own_bridge_id = switch_priority
-        self.root_bridge_id = self.own_bridge_id
-        self.root_path_cost = 0
-        self.root_port = None
+    def __new__(cls, switch_id: int = None, switch_priority: int = None, interfaces: Dict[str, SwitchPort] = None):
+        """
+        Configuratia switch-ului este unica
+        Clasa poate fi Singleton :)))
+        """
+        if cls._instance is None:
+            cls._instance = super(SwitchConfig, cls).__new__(cls)
+            cls._instance.switch_id = switch_id
+            cls._instance.switch_priority = switch_priority
+            cls._instance.interfaces = interfaces or {}
+
+            # Variables for STP (set to default when creating switch)
+            cls._instance.own_bridge_id = switch_priority
+            cls._instance.root_bridge_id = cls._instance.own_bridge_id
+            cls._instance.root_path_cost = 0
+            cls._instance.root_port = None
+        return cls._instance
 
     def __str__(self):
         """
@@ -171,12 +176,13 @@ def is_unicast(mac):
     return (mac[0] & 1) == 0
 
 # MyTODO
-def enable_VLAN_sending(network_switch: SwitchConfig, vlan_id_packet, src_interface, dst_interface, length, data) -> None:
+def enable_VLAN_sending(vlan_id_packet, src_interface, dst_interface, length, data) -> None:
     """
     Function 'wrapped' on send_to_link
     Additional logic for VLAN tag   -> Implements VLAN support
     """
 
+    network_switch = SwitchConfig()
 
     if network_switch is None:
         # Switch is not in the list of switches
@@ -227,7 +233,10 @@ def enable_VLAN_sending(network_switch: SwitchConfig, vlan_id_packet, src_interf
 
 
 # MyTODO
-def initialize_STP(network_switch: SwitchConfig) -> None:
+def initialize_STP() -> None:
+    network_switch = SwitchConfig()
+
+
     all_ports: List[SwitchPort] = list(network_switch.interfaces.values())
     trunk_ports: List[SwitchPort] = [port for port in all_ports if isinstance(port.vlan_type, Trunk)]
 
@@ -301,20 +310,20 @@ def main():
 
                 if dst_interface == src_interface:
                     continue
-                enable_VLAN_sending(network_switch, vlan_id, src_interface, dst_interface, length, data)
+                enable_VLAN_sending(vlan_id, src_interface, dst_interface, length, data)
 
             else:
                 # MyTODO Broadcast
                 for dst_interface in interfaces:
                     if dst_interface == src_interface:
                         continue
-                    enable_VLAN_sending(network_switch, vlan_id, src_interface, dst_interface, length, data)
+                    enable_VLAN_sending(vlan_id, src_interface, dst_interface, length, data)
         else:
             # MyTODO Broadcast
             for dst_interface in interfaces:
                 if dst_interface == src_interface:
                     continue
-                enable_VLAN_sending(network_switch, vlan_id, src_interface, dst_interface, length, data)
+                enable_VLAN_sending(vlan_id, src_interface, dst_interface, length, data)
 
 
 
