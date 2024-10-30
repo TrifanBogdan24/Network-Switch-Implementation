@@ -1,4 +1,4 @@
-Cerintele rezolvate: 1
+Cerintele rezolvate: 1, 2
 
 
 ## Links
@@ -124,16 +124,113 @@ if found_dst_interface == False:
 
 
 ### `VLAN` (Virtual LAN)
+---
+
 
 `VLAN`-ul este construit deasupra algoritmului `tabelei CAM`.
 
-Spunem despre interfata pe care pachetul a venit ca este `src_interface` (interfata sursa).
+Spunem despre interfata pe care pachetul a venit pachetul este `src_interface` (interfata sursa).
 
 
 Spunem despre interfata/interfetele pe care ajunge pachetul sa fie trimis mai departa ca este/sunt `dst_interface` (interfata destinatie).
 
+Voi incepe prin a citi fisierul de configuratie al switch-ului.
+Id-ul switch-ului, obtinut ca argument in linia de comanda, `switch_id = sys.argv[1]`
+il voi folosi pentru a sti exact ce fisier sa citesc.
 
-Cum in enunt se spune clar ca doar primele doua switch-uri vor fi pornite
-(`switch0` si `switch1`), eu am hardcodat relatiile dintre interfetele celor doua,
-in functie de fisierele de configuratie `configs/switch0.cfg` so `configs/switch1.cfg`.
+```python
+switch_id = sys.argv[1]
+network_switch: SwitchConfig = read_config_file(switch_id, f"configs/switch{switch_id}.cfg")
+```
 
+
+Fisierul de configuratie este ulterior parsat intr-o structura de date,
+reprezentata de clasa `SwitchConfig`
+care va contine urmatoarele informatii:
+- ID-ul switch-ului
+- Prioritatea switch-ului
+- O lista de interfete (numele si tipul `trunk`/`access`)
+
+
+```python
+class SwitchConfig:
+    def __init__(self, switch_id: int, switch_priority: int, interfaces: List[SwitchInterface]):
+        self.switch_id = switch_id
+        self.switch_priority = switch_priority
+        self.interfaces = interfaces
+```
+
+
+Fisierul de configuratie al switch-ului
+contine pe prima linie un numar, reprezentand `switch_id`-ul,
+iar mai apoi, pe toate celelalte:
+numele interfetei switch-ului (e.g. "r-1" sau "rr-0-1")
+si litera "T" (insemnand ca interfata este configurata a fi o linie `trunk`)
+sau un numar (insemnand o linie de `access`, avand `VLAN ID`-ul egal cu numarul respectiv).
+
+
+
+
+In timpul procesului de invatare (`tabela CAM`),
+in loc sa trimit direct pachetul,
+apelez o functie construita peste `send_to_link`, care,
+in functie de tipul porturilor sursa si destinatie (`trunk` / `access`),
+trimite sau nu pachetul, cu sau fara **TAG** de VLAN.
+
+
+`VLAN`-ul introduce astfel 4 cazuri:
+
+- 1\. Portul pe care pachetul a venit este de tip `access`, iar portul destinatie este `access`:
+trimit pachetul **daca si numai daca** porturile au acelasi `VLAN ID`
+(altfel nu trimit nimic)
+
+- 2\. Portul sursa este `trunk` si portul destinatie este `trunk`:
+trimit pachetul asa cum a venit
+
+- 3\. Portul sursa este `access`, iar portul destinatie este `trunk`:
+adaug **TAG**-ul de `VLAN` in pachet,
+avand `VLAN ID`-ul egal cu cel al interfetei sursa,
+si trimit pachetul.
+
+
+4\. Portul sursa este `trunk`, iar portul destinatie este `access`,
+trimit pachetul **daca si numai daca**
+`VLAN ID`-ul din pachet coincide cu `VLAN ID`-ului portului destinatie,
+caz in care elimin **TAG**-ul de `VLAN` din pachet inainte sa trimit
+(altfel, daca `VLAN ID`-urile sunt diferite, pachetul se va pierde)
+
+
+Aceasta logica se implementeaza, facand **pattern matching** intre tipurile porturilor (`trunk / access`).
+
+> Vedem astfel tipul unei interfete ca fiind o enumerare
+> (in python - `Union`) intre porturile de tip `Trunk`
+> si cele `Access`, cele din urma retinand valoarea `VLAN ID`-ului aferent.
+
+
+```python
+src_port_type: Union[Trunk, Access] = network_switch.getInterfaceByName(src_name)
+    dst_port_type: Union[Trunk, Access] = network_switch.getInterfaceByName(dst_name)
+
+if isinstance(src_port_type, Access) and isinstance(dst_port_type, Access):
+    if src_port_type.vlan_id != dst_port_type.vlan_id:
+        # Nu trimitem intre VLAN-uri diferite
+        return
+    send_to_link(dst_interface, length, data)
+    return
+if isinstance(src_port_type, Trunk) and isinstance(dst_port_type, Trunk):
+    send_to_link(dst_interface, length, data)
+    return
+if isinstance(src_port_type, Access) and isinstance(dst_port_type, Trunk):
+    new_data = data[0:12] + create_vlan_tag(int(src_port_type.vlan_id)) + data[12:]
+    new_length = length + 4       # The size of VLAN TAG is 4 bits
+    send_to_link(dst_interface, new_length, new_data)
+    return
+if isinstance(src_port_type, Trunk) and isinstance(dst_port_type, Access):
+    if int(dst_port_type.vlan_id) != int(vlan_id_packet):
+        # Nu facem transmisia intre doua VLAN-uri diferite
+        return
+    new_data = data[0:12] + data[16:]
+    new_length = length - 4       # Removing 4 bits (size of VLAN)
+    send_to_link(dst_interface, new_length, new_data)
+    return
+```

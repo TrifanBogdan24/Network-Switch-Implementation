@@ -160,19 +160,6 @@ def send_bdpu_every_sec():
 
 
 
-# MyTODO
-def send_tagged_frame_to_link(vlan_id, dst_interface, length, data):
-    tagged_frame = data[0:12] + create_vlan_tag(vlan_id) + data[12:]
-    send_to_link(dst_interface, length + 4, tagged_frame)  # The size of VLAN TAG is 4 bits
-
-# MyTODO
-def send_untagged_frame_to_link(dst_interface, length, data):
-    untagged_frame = data[0:12] + data[16:]
-    send_to_link(dst_interface, length - 4, untagged_frame)  # Removing 4 bits (size of VLAN)
-
-
-
-
 
 
 # MyTODO
@@ -199,61 +186,34 @@ def enable_VLAN_sending(network_switch: SwitchConfig, vlan_id_packet, src_interf
     src_port_type: Union[Trunk, Access] = network_switch.getInterfaceByName(src_name)
     dst_port_type: Union[Trunk, Access] = network_switch.getInterfaceByName(dst_name)
 
-    print()
-    print()
-    print()
-    print()
-    print()
-    print()
-
-    print(f"VLAN-ul sursei: {vlan_id_packet}")
-    print(f"VLAN-ul destinatie: {dst_port_type}")
-
-
     if isinstance(src_port_type, Access) and isinstance(dst_port_type, Access):
-        print("Access -> Access")
         if src_port_type.vlan_id != dst_port_type.vlan_id:
             # Nu trimitem intre VLAN-uri diferite
             return
         send_to_link(dst_interface, length, data)
         return
     if isinstance(src_port_type, Trunk) and isinstance(dst_port_type, Trunk):
-        print("Trunk -> Trunk")
         send_to_link(dst_interface, length, data)
         return
     if isinstance(src_port_type, Access) and isinstance(dst_port_type, Trunk):
-        # TODO: aici nu e bine
-        print(f"Access -> Trunk")
-        print(f"Adding VLAN ID: {int(src_port_type.vlan_id)}")
-        (new_data, new_length) = (data[0:12] + create_vlan_tag(int(src_port_type.vlan_id)) + data[12:], length + 4)
+        new_data = data[0:12] + create_vlan_tag(int(src_port_type.vlan_id)) + data[12:]
+        new_length = length + 4       # The size of VLAN TAG is 4 bits
         send_to_link(dst_interface, new_length, new_data)
         return
     if isinstance(src_port_type, Trunk) and isinstance(dst_port_type, Access):
-        # TODO: aici nu e bine
-        print(f"Trunk -> Access")
-        # send_to_link(dst_interface, length, data)
-
-
-        print(f"A venit de pe VLAN_ID (din packet) = {vlan_id_packet}")
-        print(f"VLAN_ID destinatie = {dst_port_type.vlan_id}")
-
         if int(dst_port_type.vlan_id) != int(vlan_id_packet):
             # Nu facem transmisia intre doua VLAN-uri diferite
             return
-        (new_data, new_length) = (data[0:12] + data[16:], length - 4)
+        new_data = data[0:12] + data[16:]
+        new_length = length - 4       # Removing 4 bits (size of VLAN)
         send_to_link(dst_interface, new_length, new_data)
-        
         return
     
     
-
-  
     send_to_link(dst_interface, length, data)
     return
     
 
-
-    
 
 
 
@@ -278,7 +238,6 @@ def main():
     
     network_switch: SwitchConfig = read_config_file(switch_id, f"configs/switch{switch_id}.cfg")
 
-    print(network_switch)
 
 
 
