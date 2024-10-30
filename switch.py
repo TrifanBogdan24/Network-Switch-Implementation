@@ -210,18 +210,27 @@ def enable_VLAN_sending(network_switch: SwitchConfig, vlan_id_packet, src_interf
     if isinstance(src_port_type, Access) and isinstance(dst_port_type, Trunk):
         # TODO: aici nu e bine
         print(f"Access -> Trunk")
-        # print(f"Coming from: {src_port_type.vlan_id}")
-        # print(f"The other: {vlan_id_packet}")
-        print(f"A venit de la VLAN-ul: {src_port_type.vlan_id}")
-        # send_to_link(dst_interface, length, data)
+        print(f"A venit de la VLAN-ul: {src_port_type.vlan_id}") # Vad in fisierele alea ca scrie "A venit de la VLAN-ul: 1" sau "A venit de la VLAN-ul: 1"
         (new_data, new_length) = (data[0:12] + create_vlan_tag(int(src_port_type.vlan_id)) + data[12:], length + 4)
+        print("Pachet fara TAG:")
+        print(f"Length: {length}")
+        print(f"Data: {data}")
+        print(f"VLAN ID in the original packet: {vlan_id_packet}")
+        print()
+        print(f"Pachet cu TAG {src_port_type.vlan_id}:")
+        print(f"Length: {new_length}")
+        print(f"Data: {new_data}")
+
+        print()
+        print("S-a trimis")
         send_to_link(dst_interface, new_length, new_data)
+        # send_to_link(dst_interface, length, data)
         return
     if isinstance(src_port_type, Trunk) and isinstance(dst_port_type, Access):
         # TODO: aici nu e bine
         print(f"Trunk -> Access")
-        print(f"Coming from: {src_port_type.vlan_id}")
-        print(f"The other: {vlan_id_packet}")
+        print(f"Going to: {dst_port_type.vlan_id}")
+        print(f"VLAN ID in the original packet: {vlan_id_packet}")
         print()
         # send_to_link(dst_interface, length, data)
         if int(dst_port_type.vlan_id) != int(vlan_id_packet):

@@ -1,8 +1,0 @@
-Traceback (most recent call last):
-  File "/home/bogdan/Documents/INFORMATICA/Facultate/RL/teme/RL-Tema-1/switch.py", line 353, in <module>
-    main()
-  File "/home/bogdan/Documents/INFORMATICA/Facultate/RL/teme/RL-Tema-1/switch.py", line 339, in main
-    enable_VLAN_sending(network_switch, vlan_id, src_interface, dst_interface, length, data)
-  File "/home/bogdan/Documents/INFORMATICA/Facultate/RL/teme/RL-Tema-1/switch.py", line 221, in enable_VLAN_sending
-    print(f"Coming from: {src_port_type.vlan_id}")
-AttributeError: 'Trunk' object has no attribute 'vlan_id'
