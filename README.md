@@ -209,7 +209,7 @@ Aceasta logica se implementeaza, facand **pattern matching** intre tipurile port
 
 ```python
 src_port_type: Union[Trunk, Access] = network_switch.getInterfaceByName(src_name)
-    dst_port_type: Union[Trunk, Access] = network_switch.getInterfaceByName(dst_name)
+dst_port_type: Union[Trunk, Access] = network_switch.getInterfaceByName(dst_name)
 
 if isinstance(src_port_type, Access) and isinstance(dst_port_type, Access):
     if src_port_type.vlan_id != dst_port_type.vlan_id:
