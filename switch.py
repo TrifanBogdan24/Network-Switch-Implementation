@@ -173,11 +173,8 @@ def enable_VLAN_sending(network_switch: SwitchConfig, vlan_id_packet, src_interf
     if network_switch is None:
         # Switch is not in the list of switches
         send_to_link(dst_interface, length, data)
-        print("Switch is None")
         return
     
-    print(src_interface)
-    print(dst_interface)
 
 
     src_name: str = get_interface_name(src_interface)
@@ -241,16 +238,11 @@ def main():
 
 
 
-    print("# Starting switch with id {}".format(switch_id), flush=True)
-    print("[INFO] Switch MAC", ':'.join(f'{b:02x}' for b in get_switch_mac()))
 
     # Create and start a new thread that deals with sending BDPU
     t = threading.Thread(target=send_bdpu_every_sec)
     t.start()
 
-    # Printing interface names
-    for i in interfaces:
-        print(get_interface_name(i))
 
     while True:
         # Note that data is of type bytes([...]).
@@ -261,18 +253,10 @@ def main():
 
         dest_mac, src_mac, ethertype, vlan_id = parse_ethernet_header(data)
 
-        # Print the MAC src and MAC dst in human readable format
-        dest_mac = ':'.join(f'{b:02x}' for b in dest_mac)
-        src_mac = ':'.join(f'{b:02x}' for b in src_mac)
 
         # Note. Adding a VLAN tag can be as easy as
         # tagged_frame = data[0:12] + create_vlan_tag(10) + data[12:]
 
-        print(f'Destination MAC: {dest_mac}')
-        print(f'Source MAC: {src_mac}')
-        print(f'EtherType: {ethertype}')
-
-        print("Received frame of size {} on interface {}".format(length, interface), flush=True)
 
         # TODO: Implement forwarding with learning
 
