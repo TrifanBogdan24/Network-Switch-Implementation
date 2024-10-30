@@ -62,14 +62,18 @@ o `adresa MAC` sau niciuna.
 
 
 Retin aceste interfete intr-un **dictionar Python**,
-pentru care **cheile** represinta `interfete`,
+pentru care **cheile** reprezinta `interfete`,
 iar **valorile** = `adrese MAC`.
 
-Fiecare **cheie** (`interfata`) de la 0 la `num_interfaces`,
+Fiecare **cheie** (`interfata`) este un **numar**
+de la 0 la `num_interfaces - 1` si
 nu va referi initial la nicio `adresa MAC`.
 
 
 ```python 3
+num_interfaces = wrapper.init(sys.argv[2:])
+interfaces = range(0, num_interfaces)
+
 CAM_table = {i: None for i in range(num_interfaces)}
 ```
 
