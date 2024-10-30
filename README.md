@@ -61,66 +61,69 @@ O `interfata` poate avea asociata la un moment de timp,
 o `adresa MAC` sau niciuna.
 
 
-Retin aceste interfete intr-un **dictionar Python**,
-pentru care **cheile** reprezinta `interfete`,
-iar **valorile** = `adrese MAC`.
-
-Fiecare **cheie** (`interfata`) este un **numar**
-de la 0 la `num_interfaces - 1` si
-nu va referi initial la nicio `adresa MAC`.
+Atat `interfetele`, cat si `adresele MAC` sunt unice in tabela `CAM`. 
 
 
-```python 3
-num_interfaces = wrapper.init(sys.argv[2:])
-interfaces = range(0, num_interfaces)
+Aceste asocieri le retin intr-un **dictionar Python**,
+iar ordinea in care sunt mapate influenteaza complexitatea in timp a executiei programului.
 
-CAM_table = {i: None for i in range(num_interfaces)}
+De vreme ce cunosc `adresa MAC sursa` si `adresa MAC destinatie` a pachetului pe care il primesc,
+este de inteles ca voi accesa tabela `CAM` in functie de aceste valori.
+
+> Tabela CAM: { MAC -> interfata }
+
+
+Astfel, incep printr-un dictionar vid (la inceput nu stim nimic despre maparile dintre interfete si adresele MAC):
+```python
+CAM_table_dict = dict()     # Empty dictionary
 ```
 
 
-Atunci cand primim un pachet se updateaza `Tabela CAM`,
-stiind ca `interfata` pe care a venit refera `adresa MAC sursa` a pachetului.
+Apoi, pe parcurs ce primesc pachetele, updatez tabela CAM,
+modificand valoarea cheii `adresa MAC sursa` cu interfata pe care a venit.
 
-
-
-```python 3
-CAM_table[interface] = src_mac
+```python
+CAM_table_dict[src_mac] = interface
 ```
 
-
-Pentru a trimite pachetul mai departe, `switch`-ul trebuie sa afle pe ce interfata sa il trimita.
-Astfel, va itera peste toate `interfetele` (mai putin cea pe care a venit).
-Daca vreo `interfata` refera catre `adresa MAC destinatie` a pachetului,
-inseamna ca am gasit `interfata` pe care sa fie trimis pachetul,
-si ii dam `send` (de fapt `send_to_link`) pe interfata respectiva.
+> La primire are loc procesul de invatare.
+>
+> Switch-ul face asocierile efective intre `adrese MAC` si `port`-uri
+> doar atunci cand primeste.
 
 
-```python 3
-for dst_interface in interfaces:
-    if dst_interface == interface:
+In cazul in care `adresa MAC destinatie` nu se afla in **dictionarul** tabelei CAM,
+inseamna ca nu stiu pe ce port sa trimit (`adresa MAC destinatie` nu are mapata o `interfata`),
+deci fac **broadcast**, trimitand pe toate port-urile, mai putin cel pe care a venit.
+
+Daca in schimb `adresa MAC destinatie` se gaseste in **dictionar**,
+atunci spun despre ea ca geseste in tabela CAM a switch-ului.
+Drep pentru care stiu exact pe ce port sa trimit (fac **unicast**):
+pe portul mapat in dictionar la `adresa MAC destinatie`.
+
+
+> La trimitere switch-ul nu invata nimic.
+>
+> Doar se foloseste de tabela CAM (informatiile pe care le stie deja)
+> pentru a decide unde sa trimita.
+
+
+```python
+# Trimiterea cadrului
+if dest_mac in CAM_table_dict:
+    # Unicast
+    dst_interface = CAM_table_dict[dest_mac]
+
+    if dst_interface == src_interface:
         continue
-    if CAM_table[dst_interface] == dest_mac:
-        send_to_link(dst_interface, length, data)
-        found_dst_interface = True
-        break
-```
+    enable_VLAN_sending(network_switch, vlan_id, src_interface, dst_interface, length, data)
 
-
-Daca in schimb, nu am gasit nicio `interfata` care sa asocieze `adresa MAC destinate`,
-```python 3
-if found_dst_interface == False
-```
-atunci inseamna ca nu stim pe unde sa trimitem pachetul,
-si deci il trimitem pe toate interfetele, mai putin cea pe care a venit (logic).
-
-
-```python 3
-# Broadcast
-if found_dst_interface == False:
+else:
+    # Broadcast
     for dst_interface in interfaces:
-        if dst_interface == interface:
+        if dst_interface == src_interface:
             continue
-        send_to_link(dst_interface, length, data)
+        enable_VLAN_sending(network_switch, vlan_id, src_interface, dst_interface, length, data)
 ```
 
 
@@ -153,16 +156,41 @@ reprezentata de clasa `SwitchConfig`
 care va contine urmatoarele informatii:
 - ID-ul switch-ului
 - Prioritatea switch-ului
-- O lista de interfete (numele si tipul `trunk`/`access`)
+- Interfetele switch-ului (retinute drept **asocieri** intre numele interfetei si tipul interfetei)
 
 
 ```python
 class SwitchConfig:
-    def __init__(self, switch_id: int, switch_priority: int, interfaces: List[SwitchInterface]):
+    def __init__(self, switch_id: int, switch_priority: int, interfaces: Dict[str, PortType]):
+        """
+        interfaces = { interface_name -> interface_type }
+        e.g. interfaces = { "r-1" -> "1", "rr-0-1" -> "T" }
+        """
         self.switch_id = switch_id
         self.switch_priority = switch_priority
         self.interfaces = interfaces
 ```
+
+
+Am optat pentru implementarea interfetelor citite din fisierul de configuratie
+sub forma unui **dictionar**,
+pentru a putea obtine mai usor (si mai eficient cred) tipul unei interfete in functie de nume:
+
+
+```python
+class SwitchConfig:
+    ...
+    def getInterfaceTypeByName(self, name: str) -> str:
+        if name in self.interfaces:
+            return self.interfaces[name]
+        # The KEY (interface name) is not in dictionary
+        return None
+```
+
+> Fiind un **dictionar**,
+> verificarea existentei unei chei si obtinerea valorii aferente
+> ar trebui sa ruleze in `O(1)`.
+
 
 
 Fisierul de configuratie al switch-ului
@@ -171,6 +199,43 @@ iar mai apoi, pe toate celelalte:
 numele interfetei switch-ului (e.g. "r-1" sau "rr-0-1")
 si litera "T" (insemnand ca interfata este configurata a fi o linie `trunk`)
 sau un numar (insemnand o linie de `access`, avand `VLAN ID`-ul egal cu numarul respectiv).
+
+
+
+Pentru a face o mai buna separatia in cod intre `trunk` si `access`
+(nu e o idee tocmai buna sa compar un string cu *"T"* pentru a decide daca este `trunk` sau nu),
+am creat doua clase aditionale, una pentru `trunk` si `access`,
+pe care l-am unit intr-un nou tip de date, numit `PortType`.
+
+
+```python
+
+from typing import Dict, Union
+
+
+class Trunk:
+    def __init__(self):
+        self.isTrunk: bool = True
+    
+    def __str__(self):
+        return "Port Type: TRUNK"
+
+class Access:
+    def __init__(self, vlan_id: int):
+        self.vlan_id: int = vlan_id
+
+    def __str__(self):
+        return f"Port Type: ACCESS (vlan_id={self.vlan_id})"
+
+
+PortType = Union[Trunk, Access]
+```
+
+
+> Astfel, folosind `isinstance` pe obiecte de tip `PortType`,
+> pot face usor (un fel de) **pattern matching** pe tipurile de port-uri.
+>
+> In plus, codul devine mai usor de urmarit (cel putin pentru mine).
 
 
 
@@ -204,33 +269,33 @@ caz in care elimin **TAG**-ul de `VLAN` din pachet inainte sa trimit
 (altfel, daca `VLAN ID`-urile sunt diferite, pachetul se va pierde)
 
 
-Aceasta logica se implementeaza, facand **pattern matching** intre tipurile porturilor (`trunk / access`).
+Aceasta logica se implementeaza, facand un fel de **pattern matching**
+intre tipurile (`trunk / access`) porturilor sursa si destinatie.
 
-> Vedem astfel tipul unei interfete ca fiind o enumerare
-> (in python - `Union`) intre porturile de tip `Trunk`
-> si cele `Access`, cele din urma retinand valoarea `VLAN ID`-ului aferent.
+
 
 
 ```python
-src_port_type: Union[Trunk, Access] = network_switch.getInterfaceByName(src_name)
-dst_port_type: Union[Trunk, Access] = network_switch.getInterfaceByName(dst_name)
-
 if isinstance(src_port_type, Access) and isinstance(dst_port_type, Access):
+    # Access -> Trunk
     if src_port_type.vlan_id != dst_port_type.vlan_id:
         # Nu trimitem intre VLAN-uri diferite
         return
     send_to_link(dst_interface, length, data)
     return
 if isinstance(src_port_type, Trunk) and isinstance(dst_port_type, Trunk):
+    # Trunk -> Trunk
     send_to_link(dst_interface, length, data)
     return
 if isinstance(src_port_type, Access) and isinstance(dst_port_type, Trunk):
-    new_data = data[0:12] + create_vlan_tag(int(src_port_type.vlan_id)) + data[12:]
+    # Access -> Trunk
+    new_data = data[0:12] + create_vlan_tag(src_port_type.vlan_id) + data[12:]
     new_length = length + 4       # The size of VLAN TAG is 4 bits
     send_to_link(dst_interface, new_length, new_data)
     return
 if isinstance(src_port_type, Trunk) and isinstance(dst_port_type, Access):
-    if int(dst_port_type.vlan_id) != int(vlan_id_packet):
+    # Trunk -> Access
+    if dst_port_type.vlan_id != int(vlan_id_packet):
         # Nu facem transmisia intre doua VLAN-uri diferite
         return
     new_data = data[0:12] + data[16:]
@@ -238,3 +303,4 @@ if isinstance(src_port_type, Trunk) and isinstance(dst_port_type, Access):
     send_to_link(dst_interface, new_length, new_data)
     return
 ```
+

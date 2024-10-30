@@ -6,53 +6,36 @@ import threading
 import time
 from wrapper import recv_from_any_link, send_to_link, get_switch_mac, get_interface_name
 
-from typing import List, Union
-
-
+from typing import Dict, Union
 
 
 # MyTODO
 class Trunk:
     def __init__(self):
-        self.is_trunk = True
+        self.isTrunk: bool = True
     
     def __str__(self):
-        return "Interface Type: TRUNK"
+        return "Port Type: TRUNK"
 
 # MyTODO
 class Access:
     def __init__(self, vlan_id: int):
-        self.vlan_id = vlan_id
+        self.vlan_id: int = vlan_id
 
     def __str__(self):
-        return f"Interface Type: ACCESS (vlan_id={self.vlan_id})"
+        return f"Port Type: ACCESS (vlan_id={self.vlan_id})"
 
 # MyTODO
-class SwitchInterface:
-    def __init__(self, name: str, port_type: Union[Trunk, Access]):
-        self.name = name
-        self.port_type = port_type
+PortType = Union[Trunk, Access]
 
-    def __str__(self):
-        """
-        Returns a JSON formatted string
-        """
-        string = ""
-        string += "{\n"
-        string += f"\t\"Interface name\": {self.name},\n"
-
-        # Kind a pattern matching
-        if isinstance(self.port_type, Trunk):
-            string += f"\t\"Interface type\": TRUNK\n"
-        elif isinstance(self.port_type, Access):
-            string += f"\t\"Interface type\": ACCESS (vlan_id={self.port_type.vlan_id})\n"
-
-        string += "}"
-        return string
 
 # MyTODO
 class SwitchConfig:
-    def __init__(self, switch_id: int, switch_priority: int, interfaces: List[SwitchInterface]):
+    def __init__(self, switch_id: int, switch_priority: int, interfaces: Dict[str, PortType]):
+        """
+        interfaces = { interface_name -> interface_type }
+        e.g. interfaces = { "r-1" -> "1", "rr-0-1" -> "T" }
+        """
         self.switch_id = switch_id
         self.switch_priority = switch_priority
         self.interfaces = interfaces
@@ -74,18 +57,17 @@ class SwitchConfig:
         string += "\t[\n"
 
         iter = 0
-        for interface in self.interfaces:
+
+        # Iterating all KEYS (interface names) and VALUES (interface values "T"/number)
+        for interface_name, interface_type in self.interfaces.items():
             string += "\t\t{\n"
-            string += f"\t\t\t\"Interface name\": {interface.name},\n"
+            string += f"\t\t\t\"Interface name\": {interface_name},\n"
 
-            # Kind a pattern matching
-            if isinstance(interface.port_type, Trunk):
-                string += f"\t\t\t\"Interface type\": TRUNK\n"
-            elif isinstance(interface.port_type, Access):
-                string += f"\t\t\t\"Interface type\": ACCESS (vlan_id={interface.port_type.vlan_id})\n"
+            if isinstance(interface_type, Trunk):
+                string += f"\t\t\t\"Port type\": TRUNK,\n"
+            elif isinstance(interface_type, Access):
+                string += f"\t\t\t\"Port type\": ACCESS (vlan_id={interface_type.vlan_id}),\n"
 
-
-            
             iter = iter + 1
             if iter == len(self.interfaces):
                 string += "\t\t}\n"
@@ -95,10 +77,10 @@ class SwitchConfig:
         string += "}"
         return string
     
-    def getInterfaceByName(self, name: str) -> Union[Trunk, Access]:
-        for interface in self.interfaces:
-            if interface.name == name:
-                return interface.port_type
+    def getInterfaceByName(self, name: str) -> str:
+        if name in self.interfaces:
+            return self.interfaces[name]
+        # The KEY (interface name) is not in dictionary
         return None
 
 # MyTODO
@@ -106,23 +88,22 @@ def read_config_file(switch_id: int, filepath: str) -> SwitchConfig:
     try:
         with open(filepath, 'r') as file:
             switch_priority = int(file.readline().strip())
-            interfaces = []
+            interfaces = {}
 
             for line in file:
                 line_parts = line.strip().split()
                 name = line_parts[0]
 
-                if line_parts[1] == 'T':
-                    port = Trunk()
+
+                if line_parts[1] == "T":
+                    interfaces[name] = Trunk()
                 else:
-                    vlan_id: int = int(line_parts[1])
-                    port = Access(vlan_id)
-
-                interfaces.append(SwitchInterface(name, port))
-
+                    vlan_id = int(line_parts[1])
+                    interfaces[name] = Access(vlan_id)
+            
             return SwitchConfig(switch_id, switch_priority, interfaces)
     except Exception as err:
-        print(f"[ERROR] Eroare la citirea fișierului {filepath}: {err}")
+        print(f"[ERROR] Eroare la citirea fisierului {filepath}: {err}")
         return None  
 
 
@@ -159,8 +140,17 @@ def send_bdpu_every_sec():
 
 
 
+# MyTODO
+def is_unicast(mac):
+    """
+    Adresele MAC sunt compuse din 48 de biti
+    Ele sunt reprezentate vizual, in baza 16,
+    iar grupurile de cate doua sunt despartite cu doua puncte.
 
-
+    O adresa MAC este considerata UNICAST
+    daca primul bit din primul octet este setat la 0
+    """
+    return (mac[0] & 1) == 0
 
 # MyTODO
 def enable_VLAN_sending(network_switch: SwitchConfig, vlan_id_packet, src_interface, dst_interface, length, data) -> None:
@@ -180,25 +170,30 @@ def enable_VLAN_sending(network_switch: SwitchConfig, vlan_id_packet, src_interf
     src_name: str = get_interface_name(src_interface)
     dst_name: str = get_interface_name(dst_interface)
 
-    src_port_type: Union[Trunk, Access] = network_switch.getInterfaceByName(src_name)
-    dst_port_type: Union[Trunk, Access] = network_switch.getInterfaceByName(dst_name)
+    src_port_type: PortType = network_switch.getInterfaceByName(src_name)
+    dst_port_type: PortType = network_switch.getInterfaceByName(dst_name)
+
 
     if isinstance(src_port_type, Access) and isinstance(dst_port_type, Access):
+        # Access -> Trunk
         if src_port_type.vlan_id != dst_port_type.vlan_id:
             # Nu trimitem intre VLAN-uri diferite
             return
         send_to_link(dst_interface, length, data)
         return
     if isinstance(src_port_type, Trunk) and isinstance(dst_port_type, Trunk):
+        # Trunk -> Trunk
         send_to_link(dst_interface, length, data)
         return
     if isinstance(src_port_type, Access) and isinstance(dst_port_type, Trunk):
-        new_data = data[0:12] + create_vlan_tag(int(src_port_type.vlan_id)) + data[12:]
+        # Access -> Trunk
+        new_data = data[0:12] + create_vlan_tag(src_port_type.vlan_id) + data[12:]
         new_length = length + 4       # The size of VLAN TAG is 4 bits
         send_to_link(dst_interface, new_length, new_data)
         return
     if isinstance(src_port_type, Trunk) and isinstance(dst_port_type, Access):
-        if int(dst_port_type.vlan_id) != int(vlan_id_packet):
+        # Trunk -> Access
+        if dst_port_type.vlan_id != int(vlan_id_packet):
             # Nu facem transmisia intre doua VLAN-uri diferite
             return
         new_data = data[0:12] + data[16:]
@@ -229,14 +224,9 @@ def main():
     interfaces = range(0, num_interfaces)
 
     # MyTODO init the CAM table
-    CAM_table = {port: None for port in range(num_interfaces)}
-
-
+    CAM_table_dict = dict()     # Empty dictionary
     
     network_switch: SwitchConfig = read_config_file(switch_id, f"configs/switch{switch_id}.cfg")
-
-
-
 
 
     # Create and start a new thread that deals with sending BDPU
@@ -261,35 +251,36 @@ def main():
         # TODO: Implement forwarding with learning
 
         # MyTODO updatez interfata pe care a venit pachetul cu adresa MAC sursa a pachetului
-        CAM_table[interface] = src_mac
+        CAM_table_dict[src_mac] = interface
         
         src_interface = interface
             
-        found_dst_interface: bool = False
 
+        print(dest_mac)
 
-        # MyTODO cuatam interfata care are mapata adresa MAC destinatie
-        for dst_interface in interfaces:
-            if dst_interface == interface:
-                # Nu trimitem pe unde a venit
-                continue
-            if CAM_table[dst_interface] == dest_mac:
-                # MyTODO Implement VLAN support
-                found_dst_interface = True
-                enable_VLAN_sending(network_switch, vlan_id, src_interface, dst_interface, length, data)
-                # send_to_link(dst_interface, length, data)
+        # MyTODO trimiterea cadrului
+        if is_unicast(dest_mac):
+            # MyTODO Unicast
 
-                break
+            if dest_mac in CAM_table_dict:
+                dst_interface = CAM_table_dict[dest_mac]
 
-        # MyTODO facem broadcast: trimitem packetul pe toate interfetele, mai putin pe cea pe care a venit            
-        if found_dst_interface == False:
-            for dst_interface in interfaces:
-                if dst_interface == interface:
-                    # Nu trimitem pe unde a venit
+                if dst_interface == src_interface:
                     continue
-                # MyTODO Implement VLAN support
                 enable_VLAN_sending(network_switch, vlan_id, src_interface, dst_interface, length, data)
-                # send_to_link(dst_interface, length, data)
+
+            else:
+                # MyTODO Broadcast
+                for dst_interface in interfaces:
+                    if dst_interface == src_interface:
+                        continue
+                    enable_VLAN_sending(network_switch, vlan_id, src_interface, dst_interface, length, data)
+        else:
+            # MyTODO Broadcast
+            for dst_interface in interfaces:
+                if dst_interface == src_interface:
+                    continue
+                enable_VLAN_sending(network_switch, vlan_id, src_interface, dst_interface, length, data)
 
 
 
