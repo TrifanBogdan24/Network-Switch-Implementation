@@ -6,7 +6,7 @@ import threading
 import time
 from wrapper import recv_from_any_link, send_to_link, get_switch_mac, get_interface_name
 
-from typing import Dict, Union
+from typing import List, Dict, Union
 
 
 # MyTODO
@@ -56,6 +56,12 @@ class SwitchConfig:
         self.switch_id = switch_id
         self.switch_priority = switch_priority
         self.interfaces = interfaces
+
+        # Variabile pentru STP (setate default la crearea switch-ului)
+        self.own_bridge_id = switch_priority
+        self.root_bridge_id = self.own_bridge_id
+        self.root_path_cost = 0
+        self.root_port = None
 
     def __str__(self):
         """
@@ -219,6 +225,22 @@ def enable_VLAN_sending(network_switch: SwitchConfig, vlan_id_packet, src_interf
     
 
 
+
+# MyTODO
+def initialize_STP(network_switch: SwitchConfig) -> None:
+    all_ports: List[SwitchPort] = list(network_switch.interfaces.values())
+    trunk_ports: List[SwitchPort] = [port for port in all_ports if isinstance(port.vlan_type, Trunk)]
+
+    for port in trunk_ports:
+        port.stp_type = Blocking
+
+
+    network_switch.own_bridge_id = network_switch.switch_priority
+    network_switch.root_bridge_id = network_switch.own_bridge_id
+    network_switch.root_path_cost = 0
+
+    if network_switch.own_bridge_id == network_switch.root_bridge_id:
+        pass
 
 
 
