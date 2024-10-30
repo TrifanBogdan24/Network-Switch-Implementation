@@ -199,58 +199,56 @@ def enable_VLAN_sending(network_switch: SwitchConfig, vlan_id_packet, src_interf
     src_port_type: Union[Trunk, Access] = network_switch.getInterfaceByName(src_name)
     dst_port_type: Union[Trunk, Access] = network_switch.getInterfaceByName(dst_name)
 
+    print()
+    print()
+    print()
+    print()
+    print()
+    print()
+
+    print(f"VLAN-ul sursei: {vlan_id_packet}")
+    print(f"VLAN-ul destinatie: {dst_port_type}")
 
 
     if isinstance(src_port_type, Access) and isinstance(dst_port_type, Access):
+        print("Access -> Access")
+        if src_port_type.vlan_id != dst_port_type.vlan_id:
+            # Nu trimitem intre VLAN-uri diferite
+            return
         send_to_link(dst_interface, length, data)
         return
     if isinstance(src_port_type, Trunk) and isinstance(dst_port_type, Trunk):
+        print("Trunk -> Trunk")
         send_to_link(dst_interface, length, data)
         return
     if isinstance(src_port_type, Access) and isinstance(dst_port_type, Trunk):
         # TODO: aici nu e bine
         print(f"Access -> Trunk")
-        print(f"A venit de la VLAN-ul: {src_port_type.vlan_id}") # Vad in fisierele alea ca scrie "A venit de la VLAN-ul: 1" sau "A venit de la VLAN-ul: 1"
+        print(f"Adding VLAN ID: {int(src_port_type.vlan_id)}")
         (new_data, new_length) = (data[0:12] + create_vlan_tag(int(src_port_type.vlan_id)) + data[12:], length + 4)
-        print("Pachet fara TAG:")
-        print(f"Length: {length}")
-        print(f"Data: {data}")
-        print(f"VLAN ID in the original packet: {vlan_id_packet}")
-        print()
-        print(f"Pachet cu TAG {src_port_type.vlan_id}:")
-        print(f"Length: {new_length}")
-        print(f"Data: {new_data}")
-
-        print()
-        print("S-a trimis")
         send_to_link(dst_interface, new_length, new_data)
-        # send_to_link(dst_interface, length, data)
         return
     if isinstance(src_port_type, Trunk) and isinstance(dst_port_type, Access):
         # TODO: aici nu e bine
         print(f"Trunk -> Access")
-        print(f"Going to: {dst_port_type.vlan_id}")
-        print(f"VLAN ID in the original packet: {vlan_id_packet}")
-        print()
         # send_to_link(dst_interface, length, data)
+
+
+        print(f"A venit de pe VLAN_ID (din packet) = {vlan_id_packet}")
+        print(f"VLAN_ID destinatie = {dst_port_type.vlan_id}")
+
         if int(dst_port_type.vlan_id) != int(vlan_id_packet):
             # Nu facem transmisia intre doua VLAN-uri diferite
             return
         (new_data, new_length) = (data[0:12] + data[16:], length - 4)
         send_to_link(dst_interface, new_length, new_data)
+        
         return
     
     
 
-
-
-
-
-
-
-    send_to_link(dst_interface, length, data)
   
-    print("Do nothing")
+    send_to_link(dst_interface, length, data)
     return
     
 
