@@ -25,13 +25,30 @@ class Access:
     def __str__(self):
         return f"Port Type: ACCESS (vlan_id={self.vlan_id})"
 
-# MyTODO
-PortType = Union[Trunk, Access]
+
+
+
+class Blocking:
+    def __init__(self):
+        self.isBlocked: bool = True
+
+
+class Listening:
+    def __init__(self):
+        self.isListening: bool = True
+
+
+
+class SwitchPort:
+    def __init__(self, vlan_type: Union[Trunk, Access]):
+        self.vlan_type = vlan_type
+        self.stp_type: Union[Blocking, Listening] = Listening()
+        self.is_designated_port: bool = True
 
 
 # MyTODO
 class SwitchConfig:
-    def __init__(self, switch_id: int, switch_priority: int, interfaces: Dict[str, PortType]):
+    def __init__(self, switch_id: int, switch_priority: int, interfaces: Dict[str, SwitchPort]):
         """
         interfaces = { interface_name -> interface_type }
         e.g. interfaces = { "r-1" -> "1", "rr-0-1" -> "T" }
@@ -63,10 +80,7 @@ class SwitchConfig:
             string += "\t\t{\n"
             string += f"\t\t\t\"Interface name\": {interface_name},\n"
 
-            if isinstance(interface_type, Trunk):
-                string += f"\t\t\t\"Port type\": TRUNK,\n"
-            elif isinstance(interface_type, Access):
-                string += f"\t\t\t\"Port type\": ACCESS (vlan_id={interface_type.vlan_id}),\n"
+
 
             iter = iter + 1
             if iter == len(self.interfaces):
@@ -77,7 +91,7 @@ class SwitchConfig:
         string += "}"
         return string
     
-    def getInterfaceByName(self, name: str) -> str:
+    def getInterfaceByName(self, name: str) -> SwitchPort:
         if name in self.interfaces:
             return self.interfaces[name]
         # The KEY (interface name) is not in dictionary
@@ -96,10 +110,10 @@ def read_config_file(switch_id: int, filepath: str) -> SwitchConfig:
 
 
                 if line_parts[1] == "T":
-                    interfaces[name] = Trunk()
+                    interfaces[name] = SwitchPort(Trunk())
                 else:
                     vlan_id = int(line_parts[1])
-                    interfaces[name] = Access(vlan_id)
+                    interfaces[name] = SwitchPort(Access(vlan_id))
             
             return SwitchConfig(switch_id, switch_priority, interfaces)
     except Exception as err:
@@ -144,8 +158,6 @@ def send_bdpu_every_sec():
 def is_unicast(mac):
     """
     Adresele MAC sunt compuse din 48 de biti
-    Ele sunt reprezentate vizual, in baza 16,
-    iar grupurile de cate doua sunt despartite cu doua puncte.
 
     O adresa MAC este considerata UNICAST
     daca primul bit din primul octet este setat la 0
@@ -170,8 +182,8 @@ def enable_VLAN_sending(network_switch: SwitchConfig, vlan_id_packet, src_interf
     src_name: str = get_interface_name(src_interface)
     dst_name: str = get_interface_name(dst_interface)
 
-    src_port_type: PortType = network_switch.getInterfaceByName(src_name)
-    dst_port_type: PortType = network_switch.getInterfaceByName(dst_name)
+    src_port_type: Union[Trunk, Access] = network_switch.getInterfaceByName(src_name).vlan_type
+    dst_port_type: Union[Trunk, Access] = network_switch.getInterfaceByName(dst_name).vlan_type
 
 
     if isinstance(src_port_type, Access) and isinstance(dst_port_type, Access):
