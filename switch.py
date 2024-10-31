@@ -40,33 +40,51 @@ class Listening:
 
 
 class SwitchPort:
-    def __init__(self, vlan_type: Union[Trunk, Access]):
+    def __init__(self, port_id: int, port_name: str, vlan_type: Union[Trunk, Access]):
+        self.port_id = port_id
+        self.port_name = port_name
+
         self.vlan_type = vlan_type
         self.stp_type: Union[Blocking, Listening] = Listening()
         self.is_designated_port: bool = True
 
+    def __str__(self):
+        string = "{\n"
+        
+        if isinstance(self.vlan_type, Access):
+            string += f"\tVLAN type: ACCESS {self.vlan_type.vlan_id},\n"
+        elif isinstance(self.vlan_type, Trunk):
+            string += f"\tVLAN type: TRUNK,\n"
+        
+        if isinstance(self.stp_type, Blocking):
+            string += f"\tSTP type: Blcoking,\n"
+        elif isinstance(self.stp_type, Listening):
+            string += f"\tSTP type: Listening,\n"
+        
+        if self.is_designated_port == True:
+            string += "\tDesignated port: True\n"
+        else:
+            string += "\tDesignated port: False\n"
+
+        string += "}\n"
+        return string
+
 
 # MyTODO
 class SwitchConfig:
-    _instance = None
-
-    def __new__(cls, switch_id: int = None, switch_priority: int = None, interfaces: Dict[str, SwitchPort] = None):
+    def __init__(self, switch_id: int, switch_priority: int, interfaces: List[SwitchPort] = None):
         """
-        Configuratia switch-ului este unica
-        Clasa poate fi Singleton :)))
+        Configuratia switch-ului.
         """
-        if cls._instance is None:
-            cls._instance = super(SwitchConfig, cls).__new__(cls)
-            cls._instance.switch_id = switch_id
-            cls._instance.switch_priority = switch_priority
-            cls._instance.interfaces = interfaces or {}
+        self.switch_id = switch_id
+        self.switch_priority = switch_priority
+        self.interfaces = interfaces or {}
 
-            # Variables for STP (set to default when creating switch)
-            cls._instance.own_bridge_id = switch_priority
-            cls._instance.root_bridge_id = cls._instance.own_bridge_id
-            cls._instance.root_path_cost = 0
-            cls._instance.root_port = None
-        return cls._instance
+        # Variabile pentru STP (setate la valorile implicite la crearea switch-ului)
+        self.own_bridge_id = switch_priority
+        self.root_bridge_id = self.own_bridge_id
+        self.root_path_cost = 0
+        self.root_port = None
 
     def __str__(self):
         """
@@ -87,44 +105,62 @@ class SwitchConfig:
         iter = 0
 
         # Iterating all KEYS (interface names) and VALUES (interface values "T"/number)
-        for interface_name, interface_type in self.interfaces.items():
+        for port in self.interfaces:
             string += "\t\t{\n"
-            string += f"\t\t\t\"Interface name\": {interface_name},\n"
+            string += f"\t\t\tPort name: {port.port_name},\n"
+            string += f"\t\t\tPort ID: {port.port_id},\n"
 
+            if isinstance(port.vlan_type, Trunk):
+                string += f"\t\t\tVLAN Type: TRUNK,\n"
+            elif isinstance(port.vlan_type, Access):
+                string += f"\t\t\tVLAN Type: ACCESS (vlan_id={port.vlan_type.vlan_id})\n,"
 
 
             iter = iter + 1
-            if iter == len(self.interfaces):
-                string += "\t\t}\n"
-            else:
-                string += "\t\t},\n"
+            string += "\t\t},\n" if iter != len(self.interfaces) else "\t\t}\n"
+
         string += "\t]\n"
-        string += "}"
+        string += "}\n"
         return string
     
     def getInterfaceByName(self, name: str) -> SwitchPort:
-        if name in self.interfaces:
-            return self.interfaces[name]
-        # The KEY (interface name) is not in dictionary
+        for port in self.interfaces:
+            if name == port.port_name:
+                return port
         return None
+    
+
+    def getAllTrunkPorts(self, ports) -> List[SwitchPort]:
+        all_trunk_ports = []
+        
+
+        for port in self.interfaces:
+            if isinstance(port.vlan_type, Trunk):
+                all_trunk_ports.append(port)
+
+
+        return all_trunk_ports
+
 
 # MyTODO
 def read_config_file(switch_id: int, filepath: str) -> SwitchConfig:
     try:
         with open(filepath, 'r') as file:
             switch_priority = int(file.readline().strip())
-            interfaces = {}
+            interfaces: List[SwitchPort] = []
+
+            global map_interface_names_with_ids
 
             for line in file:
                 line_parts = line.strip().split()
-                name = line_parts[0]
-
-
+                interface_name: str = line_parts[0]
+                interface_id: int = map_interface_names_with_ids[interface_name]
+                
                 if line_parts[1] == "T":
-                    interfaces[name] = SwitchPort(Trunk())
+                    interfaces.append(SwitchPort(interface_id, interface_name, Trunk()))
                 else:
                     vlan_id = int(line_parts[1])
-                    interfaces[name] = SwitchPort(Access(vlan_id))
+                    interfaces.append(SwitchPort(interface_id, interface_name, Access(vlan_id)))
             
             return SwitchConfig(switch_id, switch_priority, interfaces)
     except Exception as err:
@@ -158,22 +194,38 @@ def create_vlan_tag(vlan_id):
     # vlan_id & 0x0FFF ensures that only the last 12 bits are used
     return struct.pack('!H', 0x8200) + struct.pack('!H', vlan_id & 0x0FFF)
 
-def send_bdpu_every_sec():
-    while True:
-        # TODO Send BDPU every second if necessary
-        time.sleep(1)
-
 
 
 # MyTODO
-def is_unicast(mac):
+def is_unicast(mac) -> bool:
     """
+    Functia primeste o adresa MAC si returneaza daca este adresa UNICAST sau nu.
+
     Adresele MAC sunt compuse din 48 de biti
 
     O adresa MAC este considerata UNICAST
-    daca primul bit din primul octet este setat la 0
+    daca si numai daca primul bit din primul octet este setat la 0
     """
     return (mac[0] & 1) == 0
+
+
+def mac_addr_to_string(mac) -> str:
+    """
+    Converteste o adresa MAC la un string human-readable
+    """
+    formatted_mac = ":".join(f"{byte:02x}" for byte in mac)
+    return formatted_mac
+    
+
+
+def is_bpdu_addr(dest_mac) -> bool:
+    """
+    Functia primeste o adresa MAC (adresa MAC destinatie a pachetului)
+    si returneaza daca este adresa de BPDU sau nu
+    """
+    return mac_addr_to_string(dest_mac) == "01:80:c2:00:00:00"
+
+
 
 # MyTODO
 def enable_VLAN_sending(vlan_id_packet, src_interface, dst_interface, length, data) -> None:
@@ -182,7 +234,7 @@ def enable_VLAN_sending(vlan_id_packet, src_interface, dst_interface, length, da
     Additional logic for VLAN tag   -> Implements VLAN support
     """
 
-    network_switch = SwitchConfig()
+    global network_switch
 
     if network_switch is None:
         # Switch is not in the list of switches
@@ -232,26 +284,98 @@ def enable_VLAN_sending(vlan_id_packet, src_interface, dst_interface, length, da
 
 
 
+
+
+
 # MyTODO
 def initialize_STP() -> None:
+    global network_switch
+    network_switch
+
+    pass
+
+    # all_ports: List[SwitchPort] = list(network_switch.interfaces.values())
+    # all_trunk_ports: List[SwitchPort] = [port for port in all_ports if isinstance(port.vlan_type, Trunk)]
+
+    # for port in all_trunk_ports:
+    #     port.stp_type = Blocking
+
+
+    # network_switch.own_bridge_id = network_switch.switch_priority
+    # network_switch.root_bridge_id = network_switch.own_bridge_id
+    # network_switch.root_path_cost = 0
+
+    # if network_switch.own_bridge_id == network_switch.root_bridge_id:
+    #     for port in all_trunk_ports:
+    #         port.is_designated_port = True
+
+# MyTDOO
+def create_bpdu(src_mac, bpdu_own_bridge_id, bpdu_root_path_cost, bpdu_root_bridge_id):
+
+    # Size         6          6             4              4                4
+    # Format    dest_mac | src_mac | own_bridge_id | root_path_cost | root_bridge_id
+    format = "!6s6sIII"
+
+    dest_mac = b"\x01\x80\xC2\x00\x00\x00"
+    bpdu = struct.pack(format, dest_mac, src_mac, bpdu_own_bridge_id, bpdu_root_path_cost, bpdu_root_bridge_id)
+
+    return bpdu, len(bpdu) 
+
+
+
+
+# MyTODO
+def send_bdpu_every_sec() -> None:
+    global network_switch
+    global all_trunk_ports
+    network_switch
+
+
+
+    num_interfaces = wrapper.init(sys.argv[2:])
+    interfaces = range(0, num_interfaces)
+
+
+
+    while True:
+        # TODO Send BDPU every second if necessary
+
+
+        # for interface in interfaces:
+        #     port: SwitchPort = SwitchConfig.getInterfaceByName(get_interface_name(interface))
+
+        #     if isinstance(port.vlan_type, Trunk):
+
+
+        # if network_switch.own_bridge_id == network_switch.root_bridge_id:
+        #     bpdu, bpdu_length = create_bpdu(get_switch_mac(), network_switch.own_bridge_id, network_switch.root_path_cost, network_switch.root_bridge_id)
+        #     for trunk_port in all_trunk_ports:
+        #         pass
+        #         # send_to_link(trunk_port, bpdu, bpdu_length)
+
+        time.sleep(1)
+
+# MyTODO
+def on_receiving_bpdu(src_port, data) -> None:
+    
+    BDPU_root_bridge_ID = int(data[14:22]) # idkkkkk
+    BDPU_sender_path_cost = 0  # idkk
+    
     network_switch = SwitchConfig()
 
 
-    all_ports: List[SwitchPort] = list(network_switch.interfaces.values())
-    trunk_ports: List[SwitchPort] = [port for port in all_ports if isinstance(port.vlan_type, Trunk)]
+    
+    # [22:26]
 
-    for port in trunk_ports:
-        port.stp_type = Blocking
-
-
-    network_switch.own_bridge_id = network_switch.switch_priority
-    network_switch.root_bridge_id = network_switch.own_bridge_id
-    network_switch.root_path_cost = 0
-
-    if network_switch.own_bridge_id == network_switch.root_bridge_id:
-        pass
+    if BDPU_root_bridge_ID < network_switch.root_bridge_id:
+        network_switch.root_path_cost = BDPU_sender_path_cost + 10
+        network_switch.root_port = SwitchConfig().getInterfaceByName(src_port)
 
 
+
+network_switch: SwitchConfig = None
+all_trunk_ports: List[SwitchPort] = []
+map_interface_names_with_ids: Dict[str, int] = {}
 
 
 def main():
@@ -266,15 +390,34 @@ def main():
     num_interfaces = wrapper.init(sys.argv[2:])
     interfaces = range(0, num_interfaces)
 
+    # MyTODO
+    global map_interface_names_with_ids
+    for port in interfaces:
+        map_interface_names_with_ids[get_interface_name(port)] = int(port)
+    
+
     # MyTODO init the CAM table
     CAM_table_dict = dict()     # Empty dictionary
-    
-    network_switch: SwitchConfig = read_config_file(switch_id, f"configs/switch{switch_id}.cfg")
+
+    # MyTODO
+    global network_switch
+    network_switch = read_config_file(switch_id, f"configs/switch{switch_id}.cfg")
+
+    # MyTODO
+    global all_trunk_ports
+    all_trunk_ports = network_switch.getAllTrunkPorts(interfaces)
+
+
+
+
+    # MyTODO
+    initialize_STP()
 
 
     # Create and start a new thread that deals with sending BDPU
     t = threading.Thread(target=send_bdpu_every_sec)
     t.start()
+
 
 
     while True:
@@ -299,7 +442,6 @@ def main():
         src_interface = interface
             
 
-        print(dest_mac)
 
         # MyTODO trimiterea cadrului
         if is_unicast(dest_mac):
@@ -319,6 +461,10 @@ def main():
                         continue
                     enable_VLAN_sending(vlan_id, src_interface, dst_interface, length, data)
         else:
+            # if is_bpdu(dest_mac):
+            #     process_received_bpdu(data, length, interface)
+            #     continue
+
             # MyTODO Broadcast
             for dst_interface in interfaces:
                 if dst_interface == src_interface:
