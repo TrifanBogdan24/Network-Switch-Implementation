@@ -1,0 +1,12 @@
+Setting up interface: r-0
+Setting up interface: r-1
+Setting up interface: rr-0-1
+Setting up interface: rr-0-2
+Initializing the switch
+Pachetul BDPU va contine:
+{
+	Interface: 2,
+	Root Bridge ID: 14,
+	Sender bridge ID: 14,
+	Sender Path Cost: 0
+}

@@ -28,15 +28,27 @@ class Access:
 
 
 
-class Blocking:
+class BlockingPort:
     def __init__(self):
         self.isBlocked: bool = True
 
 
-class Listening:
+class ListeningPort:
     def __init__(self):
         self.isListening: bool = True
 
+
+class DesignatedPort:
+    def __init__(self):
+        self.isDesignated: bool = True
+
+
+class RootPort:
+    def __init__(self):
+        self.isRootPort: bool = True
+
+
+PortState = Union[BlockingPort, ListeningPort, DesignatedPort, RootPort]
 
 
 class SwitchPort:
@@ -45,8 +57,9 @@ class SwitchPort:
         self.port_name = port_name
 
         self.vlan_type = vlan_type
-        self.stp_type: Union[Blocking, Listening] = Listening()
-        self.is_designated_port: bool = True
+
+        # La initializare, toate porturile sunt in starea LISTENING
+        self.port_state: PortState = ListeningPort()
 
     def __str__(self):
         string = "{\n"
@@ -56,10 +69,10 @@ class SwitchPort:
         elif isinstance(self.vlan_type, Trunk):
             string += f"\tVLAN type: TRUNK,\n"
         
-        if isinstance(self.stp_type, Blocking):
-            string += f"\tSTP type: Blcoking,\n"
-        elif isinstance(self.stp_type, Listening):
-            string += f"\tSTP type: Listening,\n"
+        if isinstance(self.port_state, BlockingPort()):
+            string += f"\tPort state: Blcoking,\n"
+        elif isinstance(self.port_state, ListeningPort()):
+            string += f"\tPort state: Listening,\n"
         
         if self.is_designated_port == True:
             string += "\tDesignated port: True\n"
@@ -85,6 +98,8 @@ class SwitchConfig:
         self.root_bridge_id = self.own_bridge_id
         self.root_path_cost = 0
         self.root_port = None
+        # La initializare, switch-ul este ROOT BRIDGE
+        self.is_root_bridge: bool = True
 
     def __str__(self):
         """
@@ -211,17 +226,22 @@ def is_unicast(mac) -> bool:
 
 def mac_addr_to_string(mac) -> str:
     """
-    Converteste o adresa MAC la un string human-readable
+    Converteste o adresa MAC (primita sub forma de bytes) la un string human-readable
     """
     formatted_mac = ":".join(f"{byte:02x}" for byte in mac)
     return formatted_mac
     
 
 
-def is_bpdu_addr(dest_mac) -> bool:
+def is_bpdu(dest_mac) -> bool:
     """
     Functia primeste o adresa MAC (adresa MAC destinatie a pachetului)
     si returneaza daca este adresa de BPDU sau nu
+
+    Cadrele BPDU sunt identificate prin adresa multicast MAC destinatie,
+    01:80:C2:00:00:00
+
+    Adresa MAC este primita sub forma de bytes
     """
     return mac_addr_to_string(dest_mac) == "01:80:c2:00:00:00"
 
@@ -284,94 +304,140 @@ def enable_VLAN_sending(vlan_id_packet, src_interface, dst_interface, length, da
 
 
 
-
-
-
-# MyTODO
-def initialize_STP() -> None:
-    global network_switch
-    network_switch
-
-    pass
-
-    # all_ports: List[SwitchPort] = list(network_switch.interfaces.values())
-    # all_trunk_ports: List[SwitchPort] = [port for port in all_ports if isinstance(port.vlan_type, Trunk)]
-
-    # for port in all_trunk_ports:
-    #     port.stp_type = Blocking
-
-
-    # network_switch.own_bridge_id = network_switch.switch_priority
-    # network_switch.root_bridge_id = network_switch.own_bridge_id
-    # network_switch.root_path_cost = 0
-
-    # if network_switch.own_bridge_id == network_switch.root_bridge_id:
-    #     for port in all_trunk_ports:
-    #         port.is_designated_port = True
-
-# MyTDOO
-def create_bpdu(src_mac, bpdu_own_bridge_id, bpdu_root_path_cost, bpdu_root_bridge_id):
-
-    # Size         6          6             4              4                4
-    # Format    dest_mac | src_mac | own_bridge_id | root_path_cost | root_bridge_id
-    format = "!6s6sIII"
-
-    dest_mac = b"\x01\x80\xC2\x00\x00\x00"
-    bpdu = struct.pack(format, dest_mac, src_mac, bpdu_own_bridge_id, bpdu_root_path_cost, bpdu_root_bridge_id)
-
-    return bpdu, len(bpdu) 
-
-
-
-
-# MyTODO
-def send_bdpu_every_sec() -> None:
+def initialize_STP():
     global network_switch
     global all_trunk_ports
-    network_switch
+
+    for trunk_port in all_trunk_ports:
+        # Set port state to BLOCKING
+        trunk_port.port_state = BlockingPort()
+
+
+    network_switch.own_bridge_id = network_switch.switch_priority
+    network_switch.root_bridge_id = network_switch.own_bridge_id
+    network_switch.root_path_cost = 0
+
+    if network_switch.own_bridge_id == network_switch.root_bridge_id:
+        for trunk_port in all_trunk_ports:
+            trunk_port.port_state = DesignatedPort()
 
 
 
-    num_interfaces = wrapper.init(sys.argv[2:])
-    interfaces = range(0, num_interfaces)
+def send_bdpu_to_link(trunk_port: SwitchPort, root_bridge_id, sender_bridge_id, sender_path_cost) -> None:
+    # destination MAC
 
+    print("Pachetul BDPU va contine:")
+    print("{")
+    print(f"\tInterface: {trunk_port.port_id},")
+    print(f"\tRoot Bridge ID: {root_bridge_id},")
+    print(f"\tSender bridge ID: {sender_bridge_id},")
+    print(f"\tSender Path Cost: {sender_path_cost}")
+    print("}")
 
+    dest = "01:80:c2:00:00:00"
+    dst = bytes.fromhex(dest.replace(":", ""))
+    # source MAC is switch MAC
+    src = get_switch_mac()            
+    # packet length
+    bpdu_length = 44
+    llc_length = bpdu_length.to_bytes(2, byteorder='big')
+    dsap = 0x42
+    ssap = 0x42
+    control = 0x03
+    llc_header = dsap.to_bytes(1, byteorder='big') + ssap.to_bytes(1, byteorder='big') + control.to_bytes(1, byteorder='big')
+    # bpdu header length
+    bpdu_header = 23
+    bpdu_header = bpdu_header.to_bytes(4, byteorder='big')
+    # uint8_t root_bridge_id[8]
+    root_bridge_bytes = root_bridge_id.to_bytes(8, byteorder='big')
+    # uint32_t root_path_cost
+    root_path_bytes = sender_path_cost.to_bytes(4, byteorder='big')
+    # uint8_t bridge_id[8]
+    sender_bridge_bytes = sender_bridge_id.to_bytes(8, byteorder='big')
+    # uint16_t port_id
+    port_id = trunk_port.port_id.to_bytes(2, byteorder='big')
+
+    # get data to send
+    bpdu_data = dst + src + llc_length + llc_header + bpdu_header + bytes([0]) + root_bridge_bytes + root_path_bytes + sender_bridge_bytes + port_id
+    # send acket to trunk port
+    send_to_link(trunk_port.port_id, len(bpdu_data), bpdu_data)
+
+def send_bdpu_every_sec():
+    global network_switch
+    global all_trunk_ports
 
     while True:
         # TODO Send BDPU every second if necessary
+        
+        if network_switch.is_root_bridge == True:
+            for trunk_port in all_trunk_ports:
+                root_bridge_id = network_switch.own_bridge_id
+                sender_bridge_id = network_switch.own_bridge_id
+                sender_path_cost = 0
+                
+                send_bdpu_to_link(trunk_port, root_bridge_id, sender_bridge_id, sender_path_cost)
+        
 
-
-        # for interface in interfaces:
-        #     port: SwitchPort = SwitchConfig.getInterfaceByName(get_interface_name(interface))
-
-        #     if isinstance(port.vlan_type, Trunk):
-
-
-        # if network_switch.own_bridge_id == network_switch.root_bridge_id:
-        #     bpdu, bpdu_length = create_bpdu(get_switch_mac(), network_switch.own_bridge_id, network_switch.root_path_cost, network_switch.root_bridge_id)
-        #     for trunk_port in all_trunk_ports:
-        #         pass
-        #         # send_to_link(trunk_port, bpdu, bpdu_length)
 
         time.sleep(1)
 
-# MyTODO
-def on_receiving_bpdu(src_port, data) -> None:
-    
-    BDPU_root_bridge_ID = int(data[14:22]) # idkkkkk
-    BDPU_sender_path_cost = 0  # idkk
-    
-    network_switch = SwitchConfig()
+
+def on_receiving_bpdu(src_interface, data):
+    global network_switch
+    global all_trunk_ports
 
 
-    
-    # [22:26]
+    src_switch_port: SwitchPort = network_switch.getInterfaceByName(get_interface_name(src_interface))
 
-    if BDPU_root_bridge_ID < network_switch.root_bridge_id:
-        network_switch.root_path_cost = BDPU_sender_path_cost + 10
-        network_switch.root_port = SwitchConfig().getInterfaceByName(src_port)
+    bdpu_root_bridge_id: int = int(data[22:30])
+    bdpu_sender_path_cost: int = int(data[30:34])
 
 
+    if bdpu_root_bridge_id < network_switch.root_bridge_id:
+        network_switch.root_bridge_id = bdpu_root_bridge_id
+        network_switch.root_path_cost = bdpu_sender_path_cost + 10
+        src_switch_port.port_state = RootPort() # Root Port-l este port-ul de unde BPDU-ul a fost primit
+        root_port: SwitchPort = src_switch_port
+
+        # if we were the root bridge
+        if network_switch.is_root_bridge == True:
+            # set all interfaces not to hosts to blocking except the root port 
+            for trunk_port in all_trunk_ports:
+                if not isinstance(trunk_port, RootPort):
+                    trunk_port.port_state = BlockingPort()
+
+        # Acum nu mai suntem root bridge
+        network_switch.is_root_bridge = False
+
+        if isinstance(root_port.port_state, BlockingPort()):
+            root_port = ListeningPort()
+
+        # Update and forward this BPDU to all other trunk ports with:
+        #  sender_bridge_ID = own_bridge_ID
+        #  sender_path_cost = root_path_cost
+
+        for trunk_port in all_trunk_ports:
+            if isinstance(trunk_port, RootPort()):
+                continue
+            root_bridge_id = network_switch.own_bridge_id
+            sender_bridge_id = network_switch.own_bridge_id
+            sender_path_cost = network_switch.root_path_cost
+            send_bdpu_to_link(trunk_port, root_bridge_id, sender_bridge_id, sender_path_cost)
+
+    elif bdpu_root_bridge_id == network_switch.root_bridge_id:
+        if isinstance(src_switch_port.port_state, RootPort()) and bdpu_sender_path_cost + 10 < network_switch.root_path_cost:
+            network_switch.root_path_cost = bdpu_sender_path_cost + 10
+        elif not isinstance(src_switch_port.port_state, RootPort()):
+            if bdpu_sender_path_cost > network_switch.root_path_cost:
+                if not isinstance(src_switch_port.port_state, DesignatedPort()):
+                    src_switch_port.port_state = DesignatedPort()
+
+    else:
+        pass
+
+    if network_switch.own_bridge_id == network_switch.root_bridge_id:
+        for trunk_port in all_trunk_ports:
+            trunk_port.port_state = DesignatedPort()
 
 network_switch: SwitchConfig = None
 all_trunk_ports: List[SwitchPort] = []
@@ -443,6 +509,7 @@ def main():
             
 
 
+
         # MyTODO trimiterea cadrului
         if is_unicast(dest_mac):
             # MyTODO Unicast
@@ -461,10 +528,10 @@ def main():
                         continue
                     enable_VLAN_sending(vlan_id, src_interface, dst_interface, length, data)
         else:
-            # if is_bpdu(dest_mac):
-            #     process_received_bpdu(data, length, interface)
-            #     continue
-
+            if is_bpdu(dest_mac):
+                on_receiving_bpdu(src_interface, data)
+                continue
+            
             # MyTODO Broadcast
             for dst_interface in interfaces:
                 if dst_interface == src_interface:

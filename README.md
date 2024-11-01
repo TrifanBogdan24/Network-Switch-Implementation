@@ -108,24 +108,6 @@ pe portul mapat in dictionar la `adresa MAC destinatie`.
 > pentru a decide unde sa trimita.
 
 
-```python
-# Trimiterea cadrului
-if dest_mac in CAM_table_dict:
-    # Unicast
-    dst_interface = CAM_table_dict[dest_mac]
-
-    if dst_interface == src_interface:
-        continue
-    enable_VLAN_sending(network_switch, vlan_id, src_interface, dst_interface, length, data)
-
-else:
-    # Broadcast
-    for dst_interface in interfaces:
-        if dst_interface == src_interface:
-            continue
-        enable_VLAN_sending(network_switch, vlan_id, src_interface, dst_interface, length, data)
-```
-
 
 
 
@@ -159,33 +141,11 @@ care va contine urmatoarele informatii:
 - Interfetele switch-ului (retinute drept **asocieri** intre numele interfetei si tipul interfetei)
 
 
-```python
-class SwitchConfig:
-    def __init__(self, switch_id: int, switch_priority: int, interfaces: Dict[str, PortType]):
-        """
-        interfaces = { interface_name -> interface_type }
-        e.g. interfaces = { "r-1" -> "1", "rr-0-1" -> "T" }
-        """
-        self.switch_id = switch_id
-        self.switch_priority = switch_priority
-        self.interfaces = interfaces
-```
-
 
 Am optat pentru implementarea interfetelor citite din fisierul de configuratie
 sub forma unui **dictionar**,
 pentru a putea obtine mai usor (si mai eficient cred) tipul unei interfete in functie de nume:
 
-
-```python
-class SwitchConfig:
-    ...
-    def getInterfaceTypeByName(self, name: str) -> str:
-        if name in self.interfaces:
-            return self.interfaces[name]
-        # The KEY (interface name) is not in dictionary
-        return None
-```
 
 > Fiind un **dictionar**,
 > verificarea existentei unei chei si obtinerea valorii aferente
@@ -274,33 +234,18 @@ intre tipurile (`trunk / access`) porturilor sursa si destinatie.
 
 
 
+## `STP` (Spanning Tree Protocol)
+---
 
-```python
-if isinstance(src_port_type, Access) and isinstance(dst_port_type, Access):
-    # Access -> Trunk
-    if src_port_type.vlan_id != dst_port_type.vlan_id:
-        # Nu trimitem intre VLAN-uri diferite
-        return
-    send_to_link(dst_interface, length, data)
-    return
-if isinstance(src_port_type, Trunk) and isinstance(dst_port_type, Trunk):
-    # Trunk -> Trunk
-    send_to_link(dst_interface, length, data)
-    return
-if isinstance(src_port_type, Access) and isinstance(dst_port_type, Trunk):
-    # Access -> Trunk
-    new_data = data[0:12] + create_vlan_tag(src_port_type.vlan_id) + data[12:]
-    new_length = length + 4       # The size of VLAN TAG is 4 bits
-    send_to_link(dst_interface, new_length, new_data)
-    return
-if isinstance(src_port_type, Trunk) and isinstance(dst_port_type, Access):
-    # Trunk -> Access
-    if dst_port_type.vlan_id != int(vlan_id_packet):
-        # Nu facem transmisia intre doua VLAN-uri diferite
-        return
-    new_data = data[0:12] + data[16:]
-    new_length = length - 4       # Removing 4 bits (size of VLAN)
-    send_to_link(dst_interface, new_length, new_data)
-    return
-```
+
+> Un bridge se refera la un switch.
+
+
+Un switch poate fi ori `root brdige`, ori `non-root bridge`.
+
+root bridge ID: 64 biti = 8 bytes
+
+sender bridge ID: 64 biti = 8 bytes
+
+root path cost: 64 biti = 8 bytes
 
