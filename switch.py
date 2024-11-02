@@ -7,6 +7,7 @@ import time
 from wrapper import recv_from_any_link, send_to_link, get_switch_mac, get_interface_name
 
 from typing import List, Dict, Union
+from enum import Enum
 
 
 # MyTODO
@@ -28,38 +29,27 @@ class Access:
 
 
 
-class BlockingPort:
-    def __init__(self):
-        self.isBlocked: bool = True
 
 
-class ListeningPort:
-    def __init__(self):
-        self.isListening: bool = True
-
-
-class DesignatedPort:
-    def __init__(self):
-        self.isDesignated: bool = True
-
-
-class RootPort:
-    def __init__(self):
-        self.isRootPort: bool = True
-
-
-PortState = Union[BlockingPort, ListeningPort, DesignatedPort, RootPort]
+class PortState(Enum):
+    BLOCKING_PORT = "blocked port"
+    DESIGNATED_PORT = "designated port"
+    ROOT_PORT = "root port"
 
 
 class SwitchPort:
     def __init__(self, port_id: int, port_name: str, vlan_type: Union[Trunk, Access]):
-        self.port_id = port_id
-        self.port_name = port_name
+        """
+        La initializare, switch-ul este considerat a fi ROOT BRIDGE,
+        iar toate porturile lui vor fi by default (la initializare) DESIGNATED PORTS
+        (orice port DESIGNATED este si in starea LISTENING)
+        """
+        self.port_id: int = port_id
+        self.port_name: str = port_name
 
-        self.vlan_type = vlan_type
+        self.vlan_type: Union[Trunk, Access] = vlan_type
 
-        # La initializare, toate porturile sunt in starea LISTENING
-        self.port_state: PortState = ListeningPort()
+        self.port_state: PortState = PortState.DESIGNATED_PORT
 
     def __str__(self):
         string = "{\n"
@@ -69,15 +59,9 @@ class SwitchPort:
         elif isinstance(self.vlan_type, Trunk):
             string += f"\tVLAN type: TRUNK,\n"
         
-        if isinstance(self.port_state, BlockingPort()):
+        if self.port_state == PortState.BLOCKING_PORT:
             string += f"\tPort state: Blcoking,\n"
-        elif isinstance(self.port_state, ListeningPort()):
-            string += f"\tPort state: Listening,\n"
         
-        if self.is_designated_port == True:
-            string += "\tDesignated port: True\n"
-        else:
-            string += "\tDesignated port: False\n"
 
         string += "}\n"
         return string
@@ -89,15 +73,15 @@ class SwitchConfig:
         """
         Configuratia switch-ului.
         """
-        self.switch_id = switch_id
-        self.switch_priority = switch_priority
-        self.interfaces = interfaces or {}
+        self.switch_id: int = switch_id
+        self.switch_priority: int = switch_priority
+        self.interfaces: List[SwitchPort] = interfaces
 
         # Variabile pentru STP (setate la valorile implicite la crearea switch-ului)
-        self.own_bridge_id = switch_priority
-        self.root_bridge_id = self.own_bridge_id
-        self.root_path_cost = 0
-        self.root_port = None
+        self.own_bridge_id: int = switch_priority
+        self.root_bridge_id: int = self.own_bridge_id
+        self.root_path_cost: int = 0
+
         # La initializare, switch-ul este ROOT BRIDGE
         self.is_root_bridge: bool = True
 
@@ -138,14 +122,14 @@ class SwitchConfig:
         string += "}\n"
         return string
     
-    def getInterfaceByName(self, name: str) -> SwitchPort:
+    def getSwitchPortByName(self, name: str) -> SwitchPort:
         for port in self.interfaces:
             if name == port.port_name:
                 return port
         return None
     
 
-    def getAllTrunkPorts(self, ports) -> List[SwitchPort]:
+    def getAllTrunkPorts(self) -> List[SwitchPort]:
         all_trunk_ports = []
         
 
@@ -180,7 +164,7 @@ def read_config_file(switch_id: int, filepath: str) -> SwitchConfig:
             return SwitchConfig(switch_id, switch_priority, interfaces)
     except Exception as err:
         print(f"[ERROR] Eroare la citirea fisierului {filepath}: {err}")
-        return None  
+        sys.exit(255)
 
 
 
@@ -224,7 +208,7 @@ def is_unicast(mac) -> bool:
     return (mac[0] & 1) == 0
 
 
-def mac_addr_to_string(mac) -> str:
+def mac_addr_to_string(mac: bytes) -> str:
     """
     Converteste o adresa MAC (primita sub forma de bytes) la un string human-readable
     """
@@ -233,7 +217,7 @@ def mac_addr_to_string(mac) -> str:
     
 
 
-def is_bpdu(dest_mac) -> bool:
+def is_bpdu(dest_mac: bytes) -> bool:
     """
     Functia primeste o adresa MAC (adresa MAC destinatie a pachetului)
     si returneaza daca este adresa de BPDU sau nu
@@ -248,7 +232,7 @@ def is_bpdu(dest_mac) -> bool:
 
 
 # MyTODO
-def enable_VLAN_sending(vlan_id_packet, src_interface, dst_interface, length, data) -> None:
+def enable_VLAN_sending(vlan_id_packet, src_interface_id: int, dst_interface_id: int, length: int, data: bytes) -> None:
     """
     Function 'wrapped' on send_to_link
     Additional logic for VLAN tag   -> Implements VLAN support
@@ -263,29 +247,36 @@ def enable_VLAN_sending(vlan_id_packet, src_interface, dst_interface, length, da
     
 
 
-    src_name: str = get_interface_name(src_interface)
-    dst_name: str = get_interface_name(dst_interface)
+    src_interface_name: str = get_interface_name(src_interface_id)
+    dst_interface_name: str = get_interface_name(dst_interface_id)
 
-    src_port_type: Union[Trunk, Access] = network_switch.getInterfaceByName(src_name).vlan_type
-    dst_port_type: Union[Trunk, Access] = network_switch.getInterfaceByName(dst_name).vlan_type
+    src_port: SwitchPort = network_switch.getSwitchPortByName(src_interface_name)
+    dst_port: SwitchPort = network_switch.getSwitchPortByName(dst_interface_name)
 
+    src_port_type: Union[Trunk, Access] = src_port.vlan_type
+    dst_port_type: Union[Trunk, Access] = dst_port.vlan_type
+
+
+    if isinstance(dst_port_type, Trunk) and dst_port.port_state == PortState.BLOCKING_PORT:
+        # Nu trimitem NIMIC pe porturile Trunk BLOCATE
+        return
 
     if isinstance(src_port_type, Access) and isinstance(dst_port_type, Access):
         # Access -> Trunk
         if src_port_type.vlan_id != dst_port_type.vlan_id:
             # Nu trimitem intre VLAN-uri diferite
             return
-        send_to_link(dst_interface, length, data)
+        send_to_link(dst_interface_id, length, data)
         return
     if isinstance(src_port_type, Trunk) and isinstance(dst_port_type, Trunk):
         # Trunk -> Trunk
-        send_to_link(dst_interface, length, data)
+        send_to_link(dst_interface_id, length, data)
         return
     if isinstance(src_port_type, Access) and isinstance(dst_port_type, Trunk):
         # Access -> Trunk
         new_data = data[0:12] + create_vlan_tag(src_port_type.vlan_id) + data[12:]
         new_length = length + 4       # The size of VLAN TAG is 4 bits
-        send_to_link(dst_interface, new_length, new_data)
+        send_to_link(dst_interface_id, new_length, new_data)
         return
     if isinstance(src_port_type, Trunk) and isinstance(dst_port_type, Access):
         # Trunk -> Access
@@ -294,46 +285,20 @@ def enable_VLAN_sending(vlan_id_packet, src_interface, dst_interface, length, da
             return
         new_data = data[0:12] + data[16:]
         new_length = length - 4       # Removing 4 bits (size of VLAN)
-        send_to_link(dst_interface, new_length, new_data)
+        send_to_link(dst_interface_id, new_length, new_data)
         return
     
     
-    send_to_link(dst_interface, length, data)
+    send_to_link(dst_interface_id, length, data)
     return
     
 
 
 
-def initialize_STP():
-    global network_switch
-    global all_trunk_ports
-
-    for trunk_port in all_trunk_ports:
-        # Set port state to BLOCKING
-        trunk_port.port_state = BlockingPort()
-
-
-    network_switch.own_bridge_id = network_switch.switch_priority
-    network_switch.root_bridge_id = network_switch.own_bridge_id
-    network_switch.root_path_cost = 0
-
-    if network_switch.own_bridge_id == network_switch.root_bridge_id:
-        for trunk_port in all_trunk_ports:
-            trunk_port.port_state = DesignatedPort()
 
 
 
-def send_bdpu_to_link(trunk_port: SwitchPort, root_bridge_id, sender_bridge_id, sender_path_cost) -> None:
-    # destination MAC
-
-    print("Pachetul BDPU va contine:")
-    print("{")
-    print(f"\tInterface: {trunk_port.port_id},")
-    print(f"\tRoot Bridge ID: {root_bridge_id},")
-    print(f"\tSender bridge ID: {sender_bridge_id},")
-    print(f"\tSender Path Cost: {sender_path_cost}")
-    print("}")
-
+def send_bpdu_to_link(trunk_port: SwitchPort, root_bridge_id: int, sender_bridge_id: int, sender_path_cost: int) -> None:
     dest = "01:80:c2:00:00:00"
     dst = bytes.fromhex(dest.replace(":", ""))
     # source MAC is switch MAC
@@ -362,82 +327,117 @@ def send_bdpu_to_link(trunk_port: SwitchPort, root_bridge_id, sender_bridge_id, 
     # send acket to trunk port
     send_to_link(trunk_port.port_id, len(bpdu_data), bpdu_data)
 
-def send_bdpu_every_sec():
+def send_bpdu_every_sec() -> None:
     global network_switch
     global all_trunk_ports
 
     while True:
-        # TODO Send BDPU every second if necessary
+        # TODO Send BPDU every second if necessary
         
         if network_switch.is_root_bridge == True:
             for trunk_port in all_trunk_ports:
-                root_bridge_id = network_switch.own_bridge_id
-                sender_bridge_id = network_switch.own_bridge_id
-                sender_path_cost = 0
+                root_bridge_id: int = network_switch.own_bridge_id
+                sender_bridge_id: int = network_switch.own_bridge_id
+                sender_path_cost: int = 0
                 
-                send_bdpu_to_link(trunk_port, root_bridge_id, sender_bridge_id, sender_path_cost)
+                send_bpdu_to_link(trunk_port, root_bridge_id, sender_bridge_id, sender_path_cost)
         
 
 
         time.sleep(1)
 
 
-def on_receiving_bpdu(src_interface, data):
+
+def on_receiving_bpdu(src_interface: int, data: bytes) -> None:
     global network_switch
     global all_trunk_ports
 
 
-    src_switch_port: SwitchPort = network_switch.getInterfaceByName(get_interface_name(src_interface))
-
-    bdpu_root_bridge_id: int = int(data[22:30])
-    bdpu_sender_path_cost: int = int(data[30:34])
+    src_switch_port: SwitchPort = network_switch.getSwitchPortByName(get_interface_name(src_interface))
 
 
-    if bdpu_root_bridge_id < network_switch.root_bridge_id:
-        network_switch.root_bridge_id = bdpu_root_bridge_id
-        network_switch.root_path_cost = bdpu_sender_path_cost + 10
-        src_switch_port.port_state = RootPort() # Root Port-l este port-ul de unde BPDU-ul a fost primit
-        root_port: SwitchPort = src_switch_port
+    bpdu_root_bridge_id: int = int.from_bytes(data[22:30], byteorder='big')
+    bpdu_sender_path_cost: int = int.from_bytes(data[30:34], byteorder='big')
+    bpdu_sender_bridge_id: int = int.from_bytes(data[34:42], byteorder='big')
+
+    if bpdu_root_bridge_id < network_switch.root_bridge_id:
+        network_switch.root_bridge_id = bpdu_root_bridge_id
+        network_switch.root_path_cost = bpdu_sender_path_cost + 10
+        
+        src_switch_port.port_state = PortState.ROOT_PORT # Root Port-Il este port-ul de unde BPDU-ul a fost primit
+        # Un RootPort este mereu in starea Listening
 
         # if we were the root bridge
         if network_switch.is_root_bridge == True:
             # set all interfaces not to hosts to blocking except the root port 
             for trunk_port in all_trunk_ports:
-                if not isinstance(trunk_port, RootPort):
-                    trunk_port.port_state = BlockingPort()
+                if trunk_port.port_state != PortState.ROOT_PORT:
+                    trunk_port.port_state = PortState.BLOCKING_PORT
 
         # Acum nu mai suntem root bridge
         network_switch.is_root_bridge = False
 
-        if isinstance(root_port.port_state, BlockingPort()):
-            root_port = ListeningPort()
 
         # Update and forward this BPDU to all other trunk ports with:
         #  sender_bridge_ID = own_bridge_ID
         #  sender_path_cost = root_path_cost
-
         for trunk_port in all_trunk_ports:
-            if isinstance(trunk_port, RootPort()):
+            if trunk_port.port_state == PortState.ROOT_PORT:
                 continue
             root_bridge_id = network_switch.own_bridge_id
             sender_bridge_id = network_switch.own_bridge_id
             sender_path_cost = network_switch.root_path_cost
-            send_bdpu_to_link(trunk_port, root_bridge_id, sender_bridge_id, sender_path_cost)
+            send_bpdu_to_link(trunk_port, root_bridge_id, sender_bridge_id, sender_path_cost)
 
-    elif bdpu_root_bridge_id == network_switch.root_bridge_id:
-        if isinstance(src_switch_port.port_state, RootPort()) and bdpu_sender_path_cost + 10 < network_switch.root_path_cost:
-            network_switch.root_path_cost = bdpu_sender_path_cost + 10
-        elif not isinstance(src_switch_port.port_state, RootPort()):
-            if bdpu_sender_path_cost > network_switch.root_path_cost:
-                if not isinstance(src_switch_port.port_state, DesignatedPort()):
-                    src_switch_port.port_state = DesignatedPort()
+    elif bpdu_root_bridge_id == network_switch.root_bridge_id:
+        """
+        Primim pachete BPDU de la acelasi ROOT BRIDGE
+        Ceea ce inseamna ca SWITCH-ul curent este NON-ROOT BRIDGE
+        """
+        network_switch.is_root_bridge = False
 
+        if src_switch_port.port_state != PortState.ROOT_PORT and bpdu_sender_path_cost + 10 < network_switch.root_path_cost:
+            network_switch.root_path_cost = bpdu_sender_path_cost + 10
+        elif src_switch_port.port_state != PortState.ROOT_PORT:
+            if bpdu_sender_path_cost > network_switch.root_path_cost:
+                if src_switch_port.port_state != PortState.DESIGNATED_PORT:
+                    # Orice port DESIGNATED este si LISTENING
+                    src_switch_port.port_state = PortState.DESIGNATED_PORT
+
+    elif bpdu_sender_bridge_id == network_switch.own_bridge_id:
+        src_switch_port.port_state = PortState.BLOCKING_PORT
     else:
         pass
 
     if network_switch.own_bridge_id == network_switch.root_bridge_id:
+        # Switch-ul devine ROOT BRIDGE
+        network_switch.is_root_bridge = True
+
         for trunk_port in all_trunk_ports:
-            trunk_port.port_state = DesignatedPort()
+            trunk_port.port_state = PortState.DESIGNATED_PORT
+
+
+def initialize_STP():
+    global network_switch
+    global all_trunk_ports
+
+    for trunk_port in all_trunk_ports:
+        # Set port state to BLOCKING
+        trunk_port.port_state = PortState.DESIGNATED_PORT
+
+
+    network_switch.own_bridge_id = network_switch.switch_priority
+    network_switch.root_bridge_id = network_switch.own_bridge_id
+    network_switch.root_path_cost = 0
+
+
+
+    # If this switch is the root bridge, set all ports to DESIGNATED_PORT
+    if network_switch.own_bridge_id == network_switch.root_bridge_id:
+        network_switch.is_root_bridge = True
+        for trunk_port in all_trunk_ports:
+            trunk_port.port_state = PortState.DESIGNATED_PORT
+
 
 network_switch: SwitchConfig = None
 all_trunk_ports: List[SwitchPort] = []
@@ -458,12 +458,13 @@ def main():
 
     # MyTODO
     global map_interface_names_with_ids
-    for port in interfaces:
-        map_interface_names_with_ids[get_interface_name(port)] = int(port)
+    for interface_id in interfaces:
+        map_interface_names_with_ids[get_interface_name(interface_id)] = int(interface_id)
     
 
     # MyTODO init the CAM table
-    CAM_table_dict = dict()     # Empty dictionary
+    # Tabela CAM retine asocieri intre adrese MAC si numarul interfetelor (MAC -> interface_id)
+    CAM_table_dict: Dict[bytes, int] = dict()     # Empty dictionary
 
     # MyTODO
     global network_switch
@@ -471,8 +472,7 @@ def main():
 
     # MyTODO
     global all_trunk_ports
-    all_trunk_ports = network_switch.getAllTrunkPorts(interfaces)
-
+    all_trunk_ports = network_switch.getAllTrunkPorts()
 
 
 
@@ -480,13 +480,21 @@ def main():
     initialize_STP()
 
 
-    # Create and start a new thread that deals with sending BDPU
-    t = threading.Thread(target=send_bdpu_every_sec)
+    # Create and start a new thread that deals with sending BPDU
+    t = threading.Thread(target=send_bpdu_every_sec)
     t.start()
 
 
 
     while True:
+        # MyTODO
+        interface: int
+        data: bytes
+        length: int
+        dest_mac: bytes
+        src_mac: bytes
+        vlan_id: int
+
         # Note that data is of type bytes([...]).
         # b1 = bytes([72, 101, 108, 108, 111])  # "Hello"
         # b2 = bytes([32, 87, 111, 114, 108, 100])  # " World"
@@ -505,9 +513,8 @@ def main():
         # MyTODO updatez interfata pe care a venit pachetul cu adresa MAC sursa a pachetului
         CAM_table_dict[src_mac] = interface
         
-        src_interface = interface
+        src_interface_id: int = interface
             
-
 
 
         # MyTODO trimiterea cadrului
@@ -515,28 +522,28 @@ def main():
             # MyTODO Unicast
 
             if dest_mac in CAM_table_dict:
-                dst_interface = CAM_table_dict[dest_mac]
+                dst_interface_id: int = CAM_table_dict[dest_mac]
 
-                if dst_interface == src_interface:
+                if dst_interface_id == src_interface_id:
                     continue
-                enable_VLAN_sending(vlan_id, src_interface, dst_interface, length, data)
+                enable_VLAN_sending(vlan_id, src_interface_id, dst_interface_id, length, data)
 
             else:
                 # MyTODO Broadcast
-                for dst_interface in interfaces:
-                    if dst_interface == src_interface:
+                for dst_interface_id in interfaces:
+                    if dst_interface_id == src_interface_id:
                         continue
-                    enable_VLAN_sending(vlan_id, src_interface, dst_interface, length, data)
+                    enable_VLAN_sending(vlan_id, src_interface_id, dst_interface_id, length, data)
         else:
             if is_bpdu(dest_mac):
-                on_receiving_bpdu(src_interface, data)
+                on_receiving_bpdu(src_interface_id, data)
                 continue
             
             # MyTODO Broadcast
-            for dst_interface in interfaces:
-                if dst_interface == src_interface:
+            for dst_interface_id in interfaces:
+                if dst_interface_id == src_interface_id:
                     continue
-                enable_VLAN_sending(vlan_id, src_interface, dst_interface, length, data)
+                enable_VLAN_sending(vlan_id, src_interface_id, dst_interface_id, length, data)
 
 
 

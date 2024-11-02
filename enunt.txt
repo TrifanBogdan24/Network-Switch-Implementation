@@ -1,0 +1,163 @@
+
+
+The Spanning Tree Protocol(802.1d)
+
+Protocolul Spanning Tree (Spanning Tree Protocol - STP) este un protocol distribuit utilizat de switch-uri pentru a reduce topologia rețelei la un arbore de acoperire, astfel încât să nu existe bucle în topologie. În figura de mai jos, rețeaua conține multiple bucle care trebuie eliminate pentru a permite switch-urilor Ethernet să transmită cadre fără riscul inundării rețelei cu trafic redundant. Dupa mai multe runde (secunde pentru noi), toti participantii (switch-urile) vor converge catre un lider (root bridge). Acesta este un algoritm de tip leader election.
+
+Pentru a înțelege mai bine acest protocol, vom simula în Packet Tracer o topologie cu trei switch-uri. Vom studia cadrele BPDU (Bridge Protocol Data Units), evidențiate cu roz în simulator, care sunt transmise periodic de către switch-uri.
+
+Implementarea noastră va fi una simplificată: vom avea un singur proces STP pentru toate VLAN-urile, iar scopul este de a bloca link-urile care conduc la formarea de bucle. Cadrele transmise în cadrul protocolului se numesc Bridge Protocol Data Units (BPDU) și conțin trei informații importante: identificatorul switch-ului rădăcină (root bridge ID - 64 biți), identificatorul switch-ului expeditor (sender bridge ID - 64 biți) și costul drumului până la rădăcină (root path cost - 64 biți). Switch-ul rădăcină (root bridge) este switch-ul cu identificatorul cel mai mic.
+
+Algoritmul simplificat este descris în pseudocodul de mai jos. În implementarea noastră, un port de switch poate avea două stări: Blocking și Listening. În starea Listening, portul funcționează normal pentru comutarea cadrelor. La pornire, fiecare switch se consideră Root Bridge și își setează toate porturile în starea Listening, deoarece acestea sunt considerate porturi designated - porturi care au costul cel mai mic catre Root Bridge.
+
+În implementarea algoritmului ne interesează doar porturile de tip trunk, deoarece doar prin acestea se pot forma bucle. Astfel, orice referință la porturi în pseudocod se referă la legăturile trunk. Legăturile către hosts (porturile de tip access) rămân în starea listening pe toată durata funcționării switch-ului.
+
+
+```
+Initialize:
+    # Punem pe block-ing port-urile trunk pentru ca
+    # doar de acolo pot aparea bucle. Port-urile catre
+    # statii sunt pe deschise (e.g. designated)
+    for each trunk port on the switch:
+        Set port state to BLOCKING
+ 
+    # In mod normal bridge ID este format si din switch.mac_address
+    # pentru simplitate vom folosi doar priority value ce se gaseste in
+    # configuratie
+    own_bridge_ID =  switch.priority_value
+    root_bridge_ID = own_bridge_ID
+    root_path_cost = 0
+ 
+    # daca portul devine root bridge setam porturile ca designated
+    if own_bridge_ID == root_bridge_ID:
+        For each port on the bridge:
+            Set port state to DESIGNATED_PORT
+```
+
+
+La fiecare secunda, daca suntem root bridge, vom trimite un pachet BPDU.
+
+```
+Every 1 second:
+    if switch is root:
+        Send BPDU on all trunk ports with:
+            root_bridge_ID = own_bridge_ID
+            sender_bridge_ID = own_bridge_ID
+            sender_path_cost = 0
+```
+
+
+În cazul în care am primit un pachet de tip BPDU, dacă acesta are un BID (Bridge ID) mai mic decât al nostru, atunci switch-ul de la care am primit acest pachet devine root bridge pentru noi. Mai mult, vom retransmite propriul nostru BPDU actualizat pe toate celelalte porturi.
+
+```
+On receiving a BPDU:
+    if BPDU.root_bridge_ID < root_bridge_ID:
+        root_bridge_ID = BPDU.root_bridge_ID
+        # Vom adauga 10 la cost pentru ca toate link-urile sunt de 100 Mbps
+        root_path_cost = BPDU.sender_path_cost + 10 
+        root_port = port where BPDU was received
+ 
+        if we were the Root Bridge:
+            set all interfaces not to hosts to blocking except the root port  
+ 
+ 
+        if root_port state is BLOCKING:
+            Set root_port state to LISTENING
+ 
+        Update and forward this BPDU to all other trunk ports with:
+            sender_bridge_ID = own_bridge_ID
+            sender_path_cost = root_path_cost
+ 
+     Else if BPDU.root_bridge_ID == root_bridge_ID:
+        If port == root_port and BPDU.sender_path_cost + 10 < root_path_cost:
+            root_path_cost = BPDU.sender_path_cost + 10
+ 
+        Else If port != Root_Port:
+            # Verifica daca portul ar trebui trecut pe designated.
+            # Designated inseamna ca drumul catre root este prin
+            # acest switch. Daca am bloca acest drum, celelalte
+            # switch-uri nu ar mai putea comunica cu root bridge.
+            # Nota: in mod normal ar trebui sa stocam ultimul BPDU
+            # de pe fiecare port ca sa calculam designated port.
+            if BPDU.sender_path_cost > root_path_cost:
+                If port is not the Designated Port for this segment:
+                    Set port as the Designated Port and set state to LISTENING
+ 
+    Else if BPDU.sender_bridge_ID == own_bridge_ID:
+        Set port state to BLOCKING
+    Else:
+        Discard BPDU
+ 
+    if own_bridge_ID == root_bridge_ID:
+        For each port on the bridge:
+            Set port as DESIGNATED_PORT
+
+```
+
+Cadrele BPDU sunt identificate prin adresa multicast MAC destinatie, 01:80:C2:00:00:00.
+
+
+Pentru simplitate, vom presupune ca switch-urile nu se pot strica.
+
+Structura cadrelor BPDU. Cadrele BPDU folosesc encapsularea 802.2 Logical Link Control header. 
+
+Acestea au rumatoarea structura
+
+```
+IEEE 802.3 Ethernet
+Destination: Spanning-tree-(for-bridges)_00 (01:80:c2:00:00:00)
+Source: Cisco_87:85:04 (00:10:0e:87:85:04)
+Length: 38
+Padding: 0000000000000000
+Logical-Link Control
+DSAP: Spanning Tree BPDU (0x42)
+SSAP: Spanning Tree BPDU (0x42)
+Control field: U, func=UI (0x03)
+Spanning Tree Protocol
+Protocol Identifier: Spanning Tree Protocol (0x0000)
+Protocol Version Identifier: Spanning Tree (0)
+BPDU Type: Configuration (0x00)
+BPDU flags: 0x00
+Root Identifier: 32768 / 100 / 00:1c:0e:87:78:00
+Root Path Cost: 4
+Bridge Identifier: 32768 / 100 / 00:10:0e:87:85:00
+Port identifier: 0x8004
+Message Age: 1
+Max Age: 20
+Hello Time: 2
+Forward Delay: 15
+```
+
+
+
+```
+ Size (bytes) 6        6       2           3            4           31
+            DST_MAC|SRC_MAC|LLC_LENGTH|LLC_HEADER|BPDU_HEADER|BPDU_CONFIG
+
+```
+
+LLC_LENGTH este dimensiunea totala a cadrului, inclusiv dimensiunea BPDU. LLC_HEADER are urmatoarea structura:
+
+
+
+```
+Size             1                                  1                           1
+  DSAP (Destination Service Access Point)|SSAP (Source Service Access Point)|Control
+```
+
+
+Pentru a identifica protocolul STP, DSAP si SSAP vor fi 0x42. Pentru control vom pune 0x03. Structura BPDU Config este urmatoare:
+
+```
+  uint8_t  flags;
+  uint8_t  root_bridge_id[8];
+  uint32_t root_path_cost;
+  uint8_t  bridge_id[8];
+  uint16_t port_id;
+  uint16_t message_age;
+  uint16_t max_age;
+  uint16_t hello_time;
+  uint16_t forward_delay;
+```
+
+Cum toate switch-urile implementeaza protocolul scris de noi, puteti folosi fie aceasta structura, fie va definiti propria voastra reprezentare.
