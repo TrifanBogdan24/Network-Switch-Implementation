@@ -196,7 +196,7 @@ avand `VLAN ID`-ul egal cu cel al interfetei sursa,
 si trimit pachetul.
 
 
-4\. Portul sursa este `trunk`, iar portul destinatie este `access`,
+- 4\. Portul sursa este `trunk`, iar portul destinatie este `access`,
 trimit pachetul **daca si numai daca**
 `VLAN ID`-ul din pachet coincide cu `VLAN ID`-ului portului destinatie,
 caz in care elimin **TAG**-ul de `VLAN` din pachet inainte sa trimit
