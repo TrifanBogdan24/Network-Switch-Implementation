@@ -10,7 +10,7 @@ from typing import List, Dict, Union
 from enum import Enum
 
 
-# MyTODO
+
 class Trunk:
     def __init__(self):
         self.isTrunk: bool = True
@@ -18,7 +18,7 @@ class Trunk:
     def __str__(self):
         return "Port Type: TRUNK"
 
-# MyTODO
+
 class Access:
     def __init__(self, vlan_id: int):
         self.vlan_id: int = vlan_id
@@ -49,7 +49,8 @@ class SwitchPort:
 
         self.vlan_type: Union[Trunk, Access] = vlan_type
 
-        self.port_state: PortState = PortState.DESIGNATED_PORT
+        
+        self.port_state: PortState = None
 
     def __str__(self):
         string = "{\n"
@@ -61,13 +62,17 @@ class SwitchPort:
         
         if self.port_state == PortState.BLOCKING_PORT:
             string += f"\tPort state: Blcoking,\n"
+        if self.port_state == PortState.DESIGNATED_PORT:
+            string += f"\tPort state: Designeted,\n"
+        if self.port_state == PortState.ROOT_PORT:
+            string += f"\tPort state: Root,\n"
         
 
         string += "}\n"
         return string
 
 
-# MyTODO
+
 class SwitchConfig:
     def __init__(self, switch_id: int, switch_priority: int, interfaces: List[SwitchPort] = None):
         """
@@ -141,7 +146,7 @@ class SwitchConfig:
         return all_trunk_ports
 
 
-# MyTODO
+
 def read_config_file(switch_id: int, filepath: str) -> SwitchConfig:
     try:
         with open(filepath, 'r') as file:
@@ -195,15 +200,13 @@ def create_vlan_tag(vlan_id):
 
 
 
-# MyTODO
-def is_unicast(mac) -> bool:
+
+def is_unicast(mac: bytes) -> bool:
     """
     Functia primeste o adresa MAC si returneaza daca este adresa UNICAST sau nu.
 
-    Adresele MAC sunt compuse din 48 de biti
-
     O adresa MAC este considerata UNICAST
-    daca si numai daca primul bit din primul octet este setat la 0
+    daca primul bit din primul octet este setat la 0
     """
     return (mac[0] & 1) == 0
 
@@ -231,8 +234,8 @@ def is_bpdu(dest_mac: bytes) -> bool:
 
 
 
-# MyTODO
-def enable_VLAN_sending(vlan_id_packet, src_interface_id: int, dst_interface_id: int, length: int, data: bytes) -> None:
+
+def enable_VLAN_sending(vlan_id_packet: int, src_interface_id: int, dst_interface_id: int, length: int, data: bytes) -> None:
     """
     Function 'wrapped' on send_to_link
     Additional logic for VLAN tag   -> Implements VLAN support
@@ -258,7 +261,7 @@ def enable_VLAN_sending(vlan_id_packet, src_interface_id: int, dst_interface_id:
 
 
     if isinstance(dst_port_type, Trunk) and dst_port.port_state == PortState.BLOCKING_PORT:
-        # Nu trimitem NIMIC pe porturile Trunk BLOCATE
+        # Nu trimitem NIMIC pe porturile Trunk BLOCATE (este legat de STP)
         return
 
     if isinstance(src_port_type, Access) and isinstance(dst_port_type, Access):
@@ -449,34 +452,40 @@ def main():
     # are 0, 1, 2, ..., init_ret value + 1
     switch_id = sys.argv[1]
 
-    # MyTODO cast to int
+    # Casting to int
     switch_id: int = int(switch_id)
 
 
     num_interfaces = wrapper.init(sys.argv[2:])
     interfaces = range(0, num_interfaces)
 
-    # MyTODO
+
+    print("# Starting switch with id {}".format(switch_id), flush=True)
+    print("[INFO] Switch MAC", ':'.join(f'{b:02x}' for b in get_switch_mac()))
+
+
+
+    
     global map_interface_names_with_ids
     for interface_id in interfaces:
         map_interface_names_with_ids[get_interface_name(interface_id)] = int(interface_id)
     
 
-    # MyTODO init the CAM table
+    # Initializarea tabelei CAM ()
     # Tabela CAM retine asocieri intre adrese MAC si numarul interfetelor (MAC -> interface_id)
-    CAM_table_dict: Dict[bytes, int] = dict()     # Empty dictionary
+    CAM_table_dict: Dict[bytes, int] = dict()     # Dictionar vid
 
-    # MyTODO
+    
     global network_switch
     network_switch = read_config_file(switch_id, f"configs/switch{switch_id}.cfg")
 
-    # MyTODO
+    
     global all_trunk_ports
     all_trunk_ports = network_switch.getAllTrunkPorts()
 
 
 
-    # MyTODO
+    
     initialize_STP()
 
 
@@ -487,7 +496,7 @@ def main():
 
 
     while True:
-        # MyTODO
+        
         interface: int
         data: bytes
         length: int
@@ -510,16 +519,16 @@ def main():
 
         # TODO: Implement forwarding with learning
 
-        # MyTODO updatez interfata pe care a venit pachetul cu adresa MAC sursa a pachetului
+        # Updatez interfata pe care a venit pachetul cu adresa MAC sursa a pachetului
         CAM_table_dict[src_mac] = interface
         
         src_interface_id: int = interface
             
 
 
-        # MyTODO trimiterea cadrului
+        # Trimiterea cadrului
         if is_unicast(dest_mac):
-            # MyTODO Unicast
+            # Unicast
 
             if dest_mac in CAM_table_dict:
                 dst_interface_id: int = CAM_table_dict[dest_mac]
@@ -529,7 +538,7 @@ def main():
                 enable_VLAN_sending(vlan_id, src_interface_id, dst_interface_id, length, data)
 
             else:
-                # MyTODO Broadcast
+                # Broadcast
                 for dst_interface_id in interfaces:
                     if dst_interface_id == src_interface_id:
                         continue
@@ -539,7 +548,7 @@ def main():
                 on_receiving_bpdu(src_interface_id, data)
                 continue
             
-            # MyTODO Broadcast
+            # Broadcast
             for dst_interface_id in interfaces:
                 if dst_interface_id == src_interface_id:
                     continue
