@@ -385,7 +385,7 @@ Drep pentru care, am create o clasa numita `SwitchPort` care retine aceste infor
 Pentru a separa port-urile Trunk de cele Access, am creat cat doua clase separate pentru acestea.
 
 
-> Ar fi o ideea cu adevarat buna daca as fi implementat `Access` si `Trunk` sa mosteneasca `SwitchPort` :))).
+> Este o idee buna ca porturile `Access` si `Trunk` sa mosteneasca `SwitchPort` 😊😊😊).
 
 
 Iar pentru a separa rolul port-ului, am creat un **Enum** pentru cele 3 cazuri mentionate mai devreme.

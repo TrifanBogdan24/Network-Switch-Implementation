@@ -111,29 +111,22 @@ class SwitchConfig:
         # Iterating all KEYS (interface names) and VALUES (interface values "T"/number)
         for port in self.interfaces:
             string += "\t\t{\n"
-            string += f"\t\t\tPort name: {port.port_name},\n"
             string += f"\t\t\tPort ID: {port.port_id},\n"
+            string += f"\t\t\tPort Name: {port.port_name},\n"
 
             if isinstance(port, Trunk):
-                string += "\t{\n"
-                string += f"\t\tPort ID: {port.port_id},\n"
-                string += f"\t\tPort Name: {port.port_name},\n"
-                string += f"\t\tPort Type: TRUNK,\n"
+                string += f"\t\t\tPort Type: TRUNK,\n"
                 
                 if port.port_state == PortState.BLOCKING_PORT:
-                    string += f"\t\tPort State: BLOCKING\n"
+                    string += f"\t\t\tPort State: BLOCKING\n"
                 elif port.port_state == PortState.ROOT_PORT:
-                    string += f"\t\tPort State: ROOT PORT (is also Listening)\n"
+                    string += f"\t\t\tPort State: ROOT PORT (is also Listening)\n"
                 elif port.port_state == PortState.DESIGNATED_PORT:
-                    string += f"\t\tPort State: DESIGNATED PORT (is also Listening)\n"
+                    string += f"\t\t\tPort State: DESIGNATED PORT (is also Listening)\n"
 
-                string += "\t}\n"
+                string += "\t\t}\n"
             elif isinstance(port, Access):
-                string += "\t{\n"
-                string += f"\t\tPort ID: {port.port_id},\n"
-                string += f"\t\tPort Name: {port.port_name},\n"
-                string += f"\t\tPort Type: ACCESS (vlan_id={port.vlan_id})\n"
-                string += "}\n"
+                string += f"\t\t\tPort Type: ACCESS (vlan_id={port.vlan_id})\n"
 
 
             iter = iter + 1
@@ -484,16 +477,8 @@ def main():
     global network_switch
     network_switch = read_config_file(switch_id, f"configs/switch{switch_id}.cfg")
     network_switch.compute_finding_all_trunk_ports()
-    
 
-    print(network_switch)
-    print()
 
-    for port in network_switch.interfaces:
-        print()
-        print(port)
-        print()
-    
     initialize_STP()
 
 
