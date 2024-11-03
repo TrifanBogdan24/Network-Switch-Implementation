@@ -6,28 +6,8 @@ import threading
 import time
 from wrapper import recv_from_any_link, send_to_link, get_switch_mac, get_interface_name
 
-from typing import List, Dict, Union
+from typing import List, Dict
 from enum import Enum
-
-
-
-class Trunk:
-    def __init__(self):
-        self.isTrunk: bool = True
-    
-    def __str__(self):
-        return "Port Type: TRUNK"
-
-
-class Access:
-    def __init__(self, vlan_id: int):
-        self.vlan_id: int = vlan_id
-
-    def __str__(self):
-        return f"Port Type: ACCESS (vlan_id={self.vlan_id})"
-
-
-
 
 
 
@@ -38,38 +18,57 @@ class PortState(Enum):
 
 
 class SwitchPort:
-    def __init__(self, port_id: int, port_name: str, vlan_type: Union[Trunk, Access]):
-        """
-        La initializare, switch-ul este considerat a fi ROOT BRIDGE,
-        iar toate porturile lui vor fi by default (la initializare) DESIGNATED PORTS
-        (orice port DESIGNATED este si in starea LISTENING)
-        """
+    def __init__(self, port_id: int, port_name: str):
         self.port_id: int = port_id
         self.port_name: str = port_name
 
-        self.vlan_type: Union[Trunk, Access] = vlan_type
 
-        
-        self.port_state: PortState = None
 
+class Trunk(SwitchPort):
+    def __init__(self, port_id: int, port_name: str):
+        super().__init__(port_id, port_name)
+        self.isTrunk: bool = True
+        self.port_state: PortState = PortState.DESIGNATED_PORT
+    
     def __str__(self):
-        string = "{\n"
-        
-        if isinstance(self.vlan_type, Access):
-            string += f"\tVLAN type: ACCESS {self.vlan_type.vlan_id},\n"
-        elif isinstance(self.vlan_type, Trunk):
-            string += f"\tVLAN type: TRUNK,\n"
+        """
+        Returns a pretty-formatted JSON string
+        """
+        string = ""
+        string += "{\n"
+        string += f"\tPort ID: {self.port_id},\n"
+        string += f"\tPort Name: {self.port_name},\n"
+        string += f"\tPort Type: TRUNK,\n"
         
         if self.port_state == PortState.BLOCKING_PORT:
-            string += f"\tPort state: Blcoking,\n"
-        if self.port_state == PortState.DESIGNATED_PORT:
-            string += f"\tPort state: Designeted,\n"
-        if self.port_state == PortState.ROOT_PORT:
-            string += f"\tPort state: Root,\n"
-        
+            string = f"\tPort State: BLOCKING\n"
+        elif self.port_state == PortState.ROOT_PORT:
+            string = f"\tPort State: ROOT PORT (is also Listening)\n"
+        elif self.port_state == PortState.DESIGNATED_PORT:
+            string = f"\tPort State: DESIGNATED PORT (is also Listening)\n"
 
+        string = "}\n"
+        return string
+
+
+class Access(SwitchPort):
+    def __init__(self, port_id: int, port_name: str, vlan_id: int):
+        super().__init__(port_id, port_name)
+        self.vlan_id: int = vlan_id
+
+    def __str__(self):
+        """
+        Returns a pretty-formatted JSON string
+        """
+        string = ""
+        string += "{\n"
+        string += f"\tPort ID: {self.port_id},\n"
+        string += f"\tPort Name: {self.port_name},\n"
+        string += f"\tPort Type: ACCESS (vlan_id={self.vlan_id})\n"
         string += "}\n"
         return string
+
+
 
 
 
@@ -86,13 +85,14 @@ class SwitchConfig:
         self.own_bridge_id: int = switch_priority
         self.root_bridge_id: int = self.own_bridge_id
         self.root_path_cost: int = 0
+        self.all_trunk_ports: List[Trunk] = []
 
         # La initializare, switch-ul este ROOT BRIDGE
         self.is_root_bridge: bool = True
 
     def __str__(self):
         """
-        Returns a JSON formatted string
+        Returns a pretty-formatted JSON string
         """
         string = ""
         string += "{\n"
@@ -114,10 +114,26 @@ class SwitchConfig:
             string += f"\t\t\tPort name: {port.port_name},\n"
             string += f"\t\t\tPort ID: {port.port_id},\n"
 
-            if isinstance(port.vlan_type, Trunk):
-                string += f"\t\t\tVLAN Type: TRUNK,\n"
-            elif isinstance(port.vlan_type, Access):
-                string += f"\t\t\tVLAN Type: ACCESS (vlan_id={port.vlan_type.vlan_id})\n,"
+            if isinstance(port, Trunk):
+                string += "\t{\n"
+                string += f"\t\tPort ID: {port.port_id},\n"
+                string += f"\t\tPort Name: {port.port_name},\n"
+                string += f"\t\tPort Type: TRUNK,\n"
+                
+                if port.port_state == PortState.BLOCKING_PORT:
+                    string += f"\t\tPort State: BLOCKING\n"
+                elif port.port_state == PortState.ROOT_PORT:
+                    string += f"\t\tPort State: ROOT PORT (is also Listening)\n"
+                elif port.port_state == PortState.DESIGNATED_PORT:
+                    string += f"\t\tPort State: DESIGNATED PORT (is also Listening)\n"
+
+                string += "\t}\n"
+            elif isinstance(port, Access):
+                string += "\t{\n"
+                string += f"\t\tPort ID: {port.port_id},\n"
+                string += f"\t\tPort Name: {port.port_name},\n"
+                string += f"\t\tPort Type: ACCESS (vlan_id={port.vlan_id})\n"
+                string += "}\n"
 
 
             iter = iter + 1
@@ -127,24 +143,20 @@ class SwitchConfig:
         string += "}\n"
         return string
     
-    def getSwitchPortByName(self, name: str) -> SwitchPort:
+    def get_switch_port_by_name(self, name: str) -> SwitchPort:
         for port in self.interfaces:
             if name == port.port_name:
                 return port
         return None
     
 
-    def getAllTrunkPorts(self) -> List[SwitchPort]:
-        all_trunk_ports = []
+    def compute_finding_all_trunk_ports(self) -> None:
+        self.all_trunk_ports: List[Trunk] = []
         
-
         for port in self.interfaces:
-            if isinstance(port.vlan_type, Trunk):
-                all_trunk_ports.append(port)
-
-
-        return all_trunk_ports
-
+            if isinstance(port, Trunk):
+                self.all_trunk_ports.append(port)
+        return
 
 
 def read_config_file(switch_id: int, filepath: str) -> SwitchConfig:
@@ -161,10 +173,10 @@ def read_config_file(switch_id: int, filepath: str) -> SwitchConfig:
                 interface_id: int = map_interface_names_with_ids[interface_name]
                 
                 if line_parts[1] == "T":
-                    interfaces.append(SwitchPort(interface_id, interface_name, Trunk()))
+                    interfaces.append(Trunk(interface_id, interface_name))
                 else:
                     vlan_id = int(line_parts[1])
-                    interfaces.append(SwitchPort(interface_id, interface_name, Access(vlan_id)))
+                    interfaces.append(Access(interface_id, interface_name, vlan_id))
             
             return SwitchConfig(switch_id, switch_priority, interfaces)
     except Exception as err:
@@ -253,37 +265,35 @@ def enable_VLAN_sending(vlan_id_packet: int, src_interface_id: int, dst_interfac
     src_interface_name: str = get_interface_name(src_interface_id)
     dst_interface_name: str = get_interface_name(dst_interface_id)
 
-    src_port: SwitchPort = network_switch.getSwitchPortByName(src_interface_name)
-    dst_port: SwitchPort = network_switch.getSwitchPortByName(dst_interface_name)
-
-    src_port_type: Union[Trunk, Access] = src_port.vlan_type
-    dst_port_type: Union[Trunk, Access] = dst_port.vlan_type
+    src_port: SwitchPort = network_switch.get_switch_port_by_name(src_interface_name)
+    dst_port: SwitchPort = network_switch.get_switch_port_by_name(dst_interface_name)
 
 
-    if isinstance(dst_port_type, Trunk) and dst_port.port_state == PortState.BLOCKING_PORT:
+
+    if isinstance(dst_port, Trunk) and dst_port.port_state == PortState.BLOCKING_PORT:
         # Nu trimitem NIMIC pe porturile Trunk BLOCATE (este legat de STP)
         return
 
-    if isinstance(src_port_type, Access) and isinstance(dst_port_type, Access):
+    if isinstance(src_port, Access) and isinstance(dst_port, Access):
         # Access -> Trunk
-        if src_port_type.vlan_id != dst_port_type.vlan_id:
+        if src_port.vlan_id != dst_port.vlan_id:
             # Nu trimitem intre VLAN-uri diferite
             return
         send_to_link(dst_interface_id, length, data)
         return
-    if isinstance(src_port_type, Trunk) and isinstance(dst_port_type, Trunk):
+    if isinstance(src_port, Trunk) and isinstance(dst_port, Trunk):
         # Trunk -> Trunk
         send_to_link(dst_interface_id, length, data)
         return
-    if isinstance(src_port_type, Access) and isinstance(dst_port_type, Trunk):
+    if isinstance(src_port, Access) and isinstance(dst_port, Trunk):
         # Access -> Trunk
-        new_data = data[0:12] + create_vlan_tag(src_port_type.vlan_id) + data[12:]
+        new_data = data[0:12] + create_vlan_tag(src_port.vlan_id) + data[12:]
         new_length = length + 4       # The size of VLAN TAG is 4 bits
         send_to_link(dst_interface_id, new_length, new_data)
         return
-    if isinstance(src_port_type, Trunk) and isinstance(dst_port_type, Access):
+    if isinstance(src_port, Trunk) and isinstance(dst_port, Access):
         # Trunk -> Access
-        if dst_port_type.vlan_id != int(vlan_id_packet):
+        if dst_port.vlan_id != int(vlan_id_packet):
             # Nu facem transmisia intre doua VLAN-uri diferite
             return
         new_data = data[0:12] + data[16:]
@@ -332,13 +342,12 @@ def send_bpdu_to_link(trunk_port: SwitchPort, root_bridge_id: int, sender_bridge
 
 def send_bpdu_every_sec() -> None:
     global network_switch
-    global all_trunk_ports
 
     while True:
         # TODO Send BPDU every second if necessary
         
         if network_switch.is_root_bridge == True:
-            for trunk_port in all_trunk_ports:
+            for trunk_port in network_switch.all_trunk_ports:
                 root_bridge_id: int = network_switch.own_bridge_id
                 sender_bridge_id: int = network_switch.own_bridge_id
                 sender_path_cost: int = 0
@@ -353,10 +362,8 @@ def send_bpdu_every_sec() -> None:
 
 def on_receiving_bpdu(src_interface: int, data: bytes) -> None:
     global network_switch
-    global all_trunk_ports
 
-
-    src_switch_port: SwitchPort = network_switch.getSwitchPortByName(get_interface_name(src_interface))
+    src_switch_port: SwitchPort = network_switch.get_switch_port_by_name(get_interface_name(src_interface))
 
 
     bpdu_root_bridge_id: int = int.from_bytes(data[22:30], byteorder='big')
@@ -373,7 +380,7 @@ def on_receiving_bpdu(src_interface: int, data: bytes) -> None:
         # if we were the root bridge
         if network_switch.is_root_bridge == True:
             # set all interfaces not to hosts to blocking except the root port 
-            for trunk_port in all_trunk_ports:
+            for trunk_port in network_switch.all_trunk_ports:
                 if trunk_port.port_state != PortState.ROOT_PORT:
                     trunk_port.port_state = PortState.BLOCKING_PORT
 
@@ -384,7 +391,7 @@ def on_receiving_bpdu(src_interface: int, data: bytes) -> None:
         # Update and forward this BPDU to all other trunk ports with:
         #  sender_bridge_ID = own_bridge_ID
         #  sender_path_cost = root_path_cost
-        for trunk_port in all_trunk_ports:
+        for trunk_port in network_switch.all_trunk_ports:
             if trunk_port.port_state == PortState.ROOT_PORT:
                 continue
             root_bridge_id = network_switch.own_bridge_id
@@ -416,15 +423,14 @@ def on_receiving_bpdu(src_interface: int, data: bytes) -> None:
         # Switch-ul devine ROOT BRIDGE
         network_switch.is_root_bridge = True
 
-        for trunk_port in all_trunk_ports:
+        for trunk_port in network_switch.all_trunk_ports:
             trunk_port.port_state = PortState.DESIGNATED_PORT
 
 
 def initialize_STP():
     global network_switch
-    global all_trunk_ports
 
-    for trunk_port in all_trunk_ports:
+    for trunk_port in network_switch.all_trunk_ports:
         # Set port state to BLOCKING
         trunk_port.port_state = PortState.DESIGNATED_PORT
 
@@ -438,12 +444,11 @@ def initialize_STP():
     # If this switch is the root bridge, set all ports to DESIGNATED_PORT
     if network_switch.own_bridge_id == network_switch.root_bridge_id:
         network_switch.is_root_bridge = True
-        for trunk_port in all_trunk_ports:
+        for trunk_port in network_switch.all_trunk_ports:
             trunk_port.port_state = PortState.DESIGNATED_PORT
 
 
 network_switch: SwitchConfig = None
-all_trunk_ports: List[SwitchPort] = []
 map_interface_names_with_ids: Dict[str, int] = {}
 
 
@@ -478,13 +483,16 @@ def main():
     
     global network_switch
     network_switch = read_config_file(switch_id, f"configs/switch{switch_id}.cfg")
-
+    network_switch.compute_finding_all_trunk_ports()
     
-    global all_trunk_ports
-    all_trunk_ports = network_switch.getAllTrunkPorts()
 
+    print(network_switch)
+    print()
 
-
+    for port in network_switch.interfaces:
+        print()
+        print(port)
+        print()
     
     initialize_STP()
 
