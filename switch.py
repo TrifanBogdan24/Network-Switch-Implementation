@@ -225,7 +225,7 @@ def mac_addr_to_string(mac: bytes) -> str:
     
 
 
-def is_bpdu(dest_mac: bytes) -> bool:
+def is_mac_for_bpdu(dest_mac: bytes) -> bool:
     """
     Functia primeste o adresa MAC (adresa MAC destinatie a pachetului)
     si returneaza daca este adresa de BPDU sau nu
@@ -305,18 +305,51 @@ def enable_VLAN_sending(vlan_id_packet: int, src_interface_id: int, dst_interfac
 
 
 def send_bpdu_to_link(trunk_port: SwitchPort, root_bridge_id: int, sender_bridge_id: int, sender_path_cost: int) -> None:
+    """
+    Functia primeste datele necesare pentru un pachet BPDU, il construieste, iar apoi il trimite.
+
+    Structura unui pachet BPDU:
+    Size (bytes) 6        6       2           3            4           31
+            DST_MAC|SRC_MAC|LLC_LENGTH|LLC_HEADER|BPDU_HEADER|BPDU_CONFIG
+
+    Unde LLC_LENGTH este dimensiunea totala a cadrului, inclusiv dimensiunea BPDU.
+    LLC_HEADER are urmatoarea structura:
+    Size             1                                  1                           1
+        DSAP (Destination Service Access Point)|SSAP (Source Service Access Point)|Control
+    
+    Pentru a identifica protocolul STP, DSAP si SSAP vor fi 0x42.
+    Pentru control vom pune 0x03.
+
+    Structura BPDU Config este urmatoare:
+        uint8_t  flags;
+        uint8_t  root_bridge_id[8];
+        uint32_t root_path_cost;
+        uint8_t  bridge_id[8];
+        uint16_t port_id;
+        uint16_t message_age;
+        uint16_t max_age;
+        uint16_t hello_time;
+        uint16_t forward_delay;
+    """
+
     dest = "01:80:c2:00:00:00"
     dst = bytes.fromhex(dest.replace(":", ""))
-    # source MAC is switch MAC
-    src = get_switch_mac()            
-    # packet length
+    # Adresa MAC sursa este cea a switch-ului
+    src: bytes = get_switch_mac()
+    # Lungimea pachetului
     bpdu_length = 44
     llc_length = bpdu_length.to_bytes(2, byteorder='big')
-    dsap = 0x42
-    ssap = 0x42
-    control = 0x03
-    llc_header = dsap.to_bytes(1, byteorder='big') + ssap.to_bytes(1, byteorder='big') + control.to_bytes(1, byteorder='big')
-    # bpdu header length
+    # Pentru a identifica protocolul STP, DSAP si SSAP vor fi 0x42
+    dsap: int = 0x42
+    ssap: int = 0x42
+    # Pentru control vom pune 0x03
+    control: int = 0x03
+    llc_header = (
+        dsap.to_bytes(1, byteorder='big')
+        + ssap.to_bytes(1, byteorder='big')
+        + control.to_bytes(1, byteorder='big')
+    )
+    # Lungimea header-ului BPDU
     bpdu_header = 23
     bpdu_header = bpdu_header.to_bytes(4, byteorder='big')
     # uint8_t root_bridge_id[8]
@@ -328,10 +361,16 @@ def send_bpdu_to_link(trunk_port: SwitchPort, root_bridge_id: int, sender_bridge
     # uint16_t port_id
     port_id = trunk_port.port_id.to_bytes(2, byteorder='big')
 
-    # get data to send
-    bpdu_data = dst + src + llc_length + llc_header + bpdu_header + bytes([0]) + root_bridge_bytes + root_path_bytes + sender_bridge_bytes + port_id
-    # send acket to trunk port
+    # Constructia pachetului
+    bpdu_data: bytes = (
+        dst + src + llc_length + llc_header + bpdu_header
+        + bytes([0]) + root_bridge_bytes + root_path_bytes
+        + sender_bridge_bytes + port_id
+    )
+
+    # Trimiterea pachetului BPDU pe un port TRUNK
     send_to_link(trunk_port.port_id, len(bpdu_data), bpdu_data)
+
 
 def send_bpdu_every_sec() -> None:
     global network_switch
@@ -537,7 +576,7 @@ def main():
                         continue
                     enable_VLAN_sending(vlan_id, src_interface_id, dst_interface_id, length, data)
         else:
-            if is_bpdu(dest_mac):
+            if is_mac_for_bpdu(dest_mac):
                 on_receiving_bpdu(src_interface_id, data)
                 continue
             
